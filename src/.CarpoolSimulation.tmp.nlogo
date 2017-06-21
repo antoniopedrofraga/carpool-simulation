@@ -1,3 +1,5 @@
+__includes ["bdi.nls" "communication.nls"]
+
 globals
 [
   grid-x-inc               ;; the amount of patches in between two roads in the x direction
@@ -11,6 +13,17 @@ globals
   ;; patch agentsets
   intersections ;; agentset containing the patches that are intersections
   roads         ;; agentset containing the patches that are roads
+
+  roadsA
+  roadsB
+
+  upRoad
+  leftRoad
+  downRoad
+  rightRoad
+
+  semaphores
+  semaphore-goals
 ]
 
 turtles-own
@@ -21,6 +34,13 @@ turtles-own
   work      ;; the patch where they work
   house     ;; the patch where they live
   goal      ;; where am I currently headed
+  choices
+  last-patch
+  last-semaphore-goal
+
+  intentions
+  beliefs
+  incoming-queue
 ]
 
 patches-own
@@ -122,14 +142,53 @@ to setup-patches
     (floor ((pxcor + max-pxcor - floor (grid-x-inc - 2)) mod grid-x-inc) = 0) or
     (floor ((pycor + max-pycor) mod grid-y-inc) = 1)
   ]
+  set roadsA roads with [
+    (floor ((pxcor + max-pxcor - floor (grid-x-inc - 1)) mod grid-x-inc) = 0) or
+    (floor ((pycor + max-pycor) mod grid-y-inc) = 0)
+  ]
+  set roadsB roads with [
+    (floor ((pxcor + max-pxcor - floor (grid-x-inc - 2)) mod grid-x-inc) = 0) or
+    (floor ((pycor + max-pycor) mod grid-y-inc) = 1)
+  ]
+  set upRoad roads with [
+    (floor ((pxcor + max-pxcor - floor (grid-x-inc - 1)) mod grid-x-inc) = 0)
+  ]
+  set rightRoad roads with [
+    (floor ((pycor + max-pycor) mod grid-y-inc) = 0)
+  ]
+  set downRoad roads with [
+    (floor ((pxcor + max-pxcor - floor (grid-x-inc - 2)) mod grid-x-inc) = 0)
+  ]
+  set leftRoad roads with [
+    (floor ((pycor + max-pycor) mod grid-y-inc) = 1)
+  ]
   set intersections roads with [
-    ;; (floor ((pxcor + max-pxcor - floor (grid-x-inc - 2)) mod grid-x-inc) = 0) and
-    ;; (floor ((pycor + max-pycor) mod grid-y-inc) = 1) or
     (floor ((pxcor + max-pxcor - floor (grid-x-inc - 2)) mod grid-x-inc) = 0) and
     (floor ((pycor + max-pycor) mod grid-y-inc) = 1)
   ]
+  set semaphores roads with [
+    ((floor ((pxcor + max-pxcor - floor (grid-x-inc - 2)) mod grid-x-inc) = 0) and
+    (floor ((pycor + max-pycor) mod grid-y-inc) = 2)) or
+    ((floor ((pxcor + max-pxcor - floor (grid-x-inc - 3)) mod grid-x-inc) = 0) and
+    (floor ((pycor + max-pycor) mod grid-y-inc) = 0)) or
+    ((floor ((pxcor + max-pxcor - floor (grid-x-inc)) mod grid-x-inc) = 0) and
+    (floor ((pycor + max-pycor) mod grid-y-inc) = 1)) or
+    ((floor ((pxcor + max-pxcor - floor (grid-x-inc - 1)) mod grid-x-inc) = 0) and
+    (floor ((pycor + max-pycor + 2) mod grid-y-inc) = 1))
+  ]
+  set semaphore-goals roads with [
+    ((floor ((pxcor + max-pxcor - floor (grid-x-inc - 1)) mod grid-x-inc) = 0) and
+    (floor ((pycor + max-pycor) mod grid-y-inc) = 2)) or
+    ((floor ((pxcor + max-pxcor - floor (grid-x-inc - 3)) mod grid-x-inc) = 0) and
+    (floor ((pycor + max-pycor - 1) mod grid-y-inc) = 0)) or
+    ((floor ((pxcor + max-pxcor - floor (grid-x-inc)) mod grid-x-inc) = 0) and
+    (floor ((pycor + max-pycor + 1) mod grid-y-inc) = 1)) or
+    ((floor ((pxcor + max-pxcor - floor (grid-x-inc - 2)) mod grid-x-inc) = 0) and
+    (floor ((pycor + max-pycor + 2) mod grid-y-inc) = 1))
+  ]
+  ask roads [set pcolor white ]
+  ask intersections [ set pcolor white ]
 
-  ask roads [ set pcolor white ]
   setup-intersections
 end
 
@@ -152,6 +211,8 @@ end
 to setup-cars  ;; turtle procedure
   set speed 0
   set wait-time 0
+  set intentions []
+  set incoming-queue []
   put-on-empty-road
   ifelse intersection? [
     ifelse random 2 = 0
@@ -166,6 +227,7 @@ to setup-cars  ;; turtle procedure
   ifelse up-car?
     [ set heading 180 ]
     [ set heading 90 ]
+  go-to-goal
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
@@ -182,6 +244,7 @@ end
 to go
 
   ask current-intersection [ update-variables ]
+  ask turtles [execute-intentions]
 
   ;; have the intersections change their color
   set-signals
@@ -190,9 +253,6 @@ to go
   ;; set the cars’ speed, move them forward their speed, record data for plotting,
   ;; and set the color of the cars to an appropriate color based on their speed
   ask turtles [
-    face next-patch ;; car heads towards its goal
-    set-car-speed
-    fd speed
     record-data     ;; record data for plotting
     set-car-color   ;; set color to indicate speed
   ]
@@ -251,18 +311,20 @@ to set-signal-colors  ;; intersection (patch) procedure
       ask patch-at -1 -1 [ set pcolor red ]
       ask patch-at 2 0 [ set pcolor red ]
       ask patch-at 0 1 [ set pcolor green ]
-       ask patch-at 2 2 [ set pcolor green ]
+      ask patch-at 1 -2 [ set pcolor green ]
     ]
     [
       ask patch-at -1 -1 [ set pcolor green ]
       ask patch-at 2 0 [ set pcolor green ]
       ask patch-at 0 1 [ set pcolor red ]
-      ask patch-at -2 2 [ set pcolor red ]
+      ask patch-at 1 -2 [ set pcolor red ]
     ]
   ]
   [
-    ask patch-at -1 0 [ set pcolor white ]
+    ask patch-at -1 -1 [ set pcolor white]
+    ask patch-at 2 0 [ set pcolor white ]
     ask patch-at 0 1 [ set pcolor white ]
+    ask patch-at 1 -2 [ set pcolor white ]
   ]
 end
 
@@ -343,25 +405,59 @@ to next-phase
   set phase phase + 1
   if phase mod ticks-per-cycle = 0 [ set phase 0 ]
 end
-
+;; Set the intention to go to goal
+to go-to-goal
+  add-intention "next-semaphore-to-goal" "at-semaphore"
+end
+to go-to-semaphore-goal
+  let intersection one-of intersections in-radius 3
+  let possible-goals (patch-set [patch-at 1 1] of intersection [patch-at 0 -2] of intersection [patch-at -1 0] of intersection [patch-at 2 -1] of intersection)
+  set choices (possible-goals with [not member? self [neighbors4] of myself])
+  set last-semaphore-goal min-one-of choices [ distance [ goal ] of myself ]
+  add-intention "next-intersection-goal" "at-semaphore-goal"
+end
+to next-semaphore-to-goal
+  face next-patch ;; car heads towards its goal
+  set-car-speed
+  fd speed
+end
+to next-intersection-goal
+  face last-semaphore-goal ;; car heads towards its intersection goal
+  set-car-speed
+  fd speed
+end
 ;; establish goal of driver (house or work) and move to next patch along the way
 to-report next-patch
   ;; if I am going home and I am next to the patch that is my home
   ;; my goal gets set to the patch that is my work
   if goal = house and (member? patch-here [ neighbors4 ] of house) [
+
     set goal work
   ]
   ;; if I am going to work and I am next to the patch that is my work
   ;; my goal gets set to the patch that is my home
   if goal = work and (member? patch-here [ neighbors4 ] of work) [
+    ask goal [set pcolor 38]
+    ask house [set pcolor yellow]
     set goal house
   ]
   ;; CHOICES is an agentset of the candidate patches that the car can
   ;; move to (white patches are roads, green and red patches are lights)
-  let choices neighbors with [ pcolor = white or pcolor = red or pcolor = green ]
+  let choice ifelse-value (member? patch-here roadsA) [
+    ifelse-value (member? patch-here upRoad)
+    [ patch-at 0 1 ]
+    [ patch-at 1 0 ]
+  ] [
+    ifelse-value (member? patch-here downRoad)
+    [ patch-at 0 -1 ]
+    [ patch-at -1 0 ]
+  ]
+
+
   ;; choose the patch closest to the goal, this is the patch the car will move to
-  let choice min-one-of choices [ distance [ goal ] of myself ]
+  ;;let choice min-one-of choices [ distance [ goal ] of myself ]
   ;; report the chosen patch
+  set last-patch patch-here;
   report choice
 end
 
@@ -413,6 +509,15 @@ to label-subject
   ]
 end
 
+;; intentions reporters
+to-report at-semaphore
+  if (member? patch-here semaphores) [ go-to-semaphore-goal ]
+  report member? patch-here semaphores
+end
+to-report at-semaphore-goal
+  if (member? patch-here semaphore-goals) [ go-to-goal ]
+  report member? patch-here semaphore-goals
+end
 
 ; Copyright 2008 Uri Wilensky.
 ; See Info tab for full copyright and license.
@@ -488,7 +593,7 @@ SLIDER
 grid-size-y
 grid-size-y
 1
-9
+6
 4.0
 1
 1
@@ -503,7 +608,7 @@ SLIDER
 grid-size-x
 grid-size-x
 1
-9
+6
 4.0
 1
 1
@@ -530,7 +635,7 @@ num-cars
 num-cars
 1
 400
-101.0
+1.0
 1
 1
 NIL
@@ -597,7 +702,7 @@ speed-limit
 speed-limit
 0.1
 1
-1.0
+0.5
 0.1
 1
 NIL
@@ -722,6 +827,39 @@ NIL
 NIL
 NIL
 0
+
+SWITCH
+10
+395
+152
+428
+show_messages
+show_messages
+1
+1
+-1000
+
+SWITCH
+160
+395
+302
+428
+show-intentions
+show-intentions
+0
+1
+-1000
+
+SWITCH
+45
+475
+247
+508
+show-interface-intentions
+show-interface-intentions
+0
+1
+-1000
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT

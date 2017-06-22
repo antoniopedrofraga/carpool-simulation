@@ -38,11 +38,8 @@ cars-own
   is-carpooler ;; the car can carpool
   work      ;; the patch where they work
   house     ;; the patch where they live
+  current-path ;;the path to take
   goal      ;; where am I currently headed
-
-  choices
-  last-patch
-  last-semaphore-goal
 
   intentions
   beliefs
@@ -105,13 +102,13 @@ to setup
     stop
   ]
 
-  if (num-persons + num-cars > count goal-candidates) [
+  if (num-persons * 2 + num-cars * 2 > count goal-candidates) [
     user-message (word
       "There are too many persons and cars for the amount of "
-      "work and house .  Either increase the amount of roads "
+      "work and house candidates.  Either increase the amount of roads "
       "by increasing the GRID-SIZE-X or "
       "GRID-SIZE-Y sliders, or decrease the "
-      "number of cars by lowering the NUM-CAR slider.\n"
+      "number of cars/persons by lowering the NUM-CAR or NUM-PERSONS slider.\n"
       "The setup has stopped.")
     stop
   ]
@@ -126,6 +123,9 @@ to setup
     ;; choose at random a location for work, make sure work is not located at same location as house
     set work one-of goal-candidates with [ self != [ house ] of myself ]
     set goal work
+
+    set current-path get-path
+    go-to-goal
   ]
 
   create-persons num-persons [
@@ -452,54 +452,20 @@ to next-phase
 end
 ;; Set the intention to go to goal
 to go-to-goal
-  add-intention "next-semaphore-to-goal" "at-semaphore"
+  add-intention "next-patch-to-goal" "at-goal"
 end
-to go-to-semaphore-goal
-  let intersection one-of intersections in-radius 3
-  let possible-goals (patch-set [patch-at 1 1] of intersection [patch-at 0 -2] of intersection [patch-at -1 0] of intersection [patch-at 2 -1] of intersection)
-  set choices (possible-goals with [not member? self [neighbors4] of myself])
-  set last-semaphore-goal min-one-of choices [ distance [ goal ] of myself ]
-  add-intention "next-intersection-goal" "at-semaphore-goal"
+to set-path
+  set current-path get-path
+  go-to-goal
 end
-to next-semaphore-to-goal
+to next-patch-to-goal
   face next-patch ;; car heads towards its goal
-  set-car-speed
-  fd speed
-end
-to next-intersection-goal
-  face last-semaphore-goal ;; car heads towards its intersection goal
   set-car-speed
   fd speed
 end
 ;; establish goal of driver (house or work) and move to next patch along the way
 to-report next-patch
-  ;; if I am going home and I am next to the patch that is my home
-  ;; my goal gets set to the patch that is my work
-  if goal = house and (member? patch-here [ neighbors4 ] of house) [
-    set goal work
-  ]
-  ;; if I am going to work and I am next to the patch that is my work
-  ;; my goal gets set to the patch that is my home
-  if goal = work and (member? patch-here [ neighbors4 ] of work) [
-    set goal house
-  ]
-  ;; CHOICES is an agentset of the candidate patches that the car can
-  ;; move to (white patches are roads, green and red patches are lights)
-  let choice ifelse-value (member? patch-here roadsA) [
-    ifelse-value (member? patch-here upRoad)
-    [ patch-at 0 1 ]
-    [ patch-at 1 0 ]
-  ] [
-    ifelse-value (member? patch-here downRoad)
-    [ patch-at 0 -1 ]
-    [ patch-at -1 0 ]
-  ]
-
-
-  ;; choose the patch closest to the goal, this is the patch the car will move to
-  ;;let choice min-one-of choices [ distance [ goal ] of myself ]
-  ;; report the chosen patch
-  set last-patch patch-here;
+  let choice item (length current-path - 1) current-path
   report choice
 end
 
@@ -536,6 +502,7 @@ to stop-watching
   ]
   ;; make sure we close all turtle inspectors that may have been opened
   ask cars [
+    set size 1
     set label ""
     stop-inspecting self
   ]
@@ -551,14 +518,58 @@ to label-subject
   ]
 end
 
-;; intentions reporters
-to-report at-semaphore
-  if (member? patch-here semaphores) [ go-to-semaphore-goal ]
-  report member? patch-here semaphores
+to-report get-path
+  let path []
+  set path lput patch-here path
+  while [item (length path - 1) path != goal] [
+    let current-patch item (length path - 1) path
+    let patch-to-analyze current-patch
+    let index 1
+    while [not member? patch-to-analyze semaphores] [
+      if (member? patch-to-analyze [ neighbors4 ] of goal) [
+
+        set path lput patch-to-analyze path
+        report path
+      ]
+      set patch-to-analyze ifelse-value (member? patch-to-analyze roadsA) [
+        ifelse-value (member? patch-to-analyze upRoad)
+        [ ([patch-at 0 index] of current-patch) ]
+        [ ([patch-at index 0] of current-patch) ]
+      ] [
+        ifelse-value (member? patch-to-analyze downRoad)
+        [ ([patch-at 0 (index * -1)] of current-patch) ]
+        [ ([patch-at (index * -1) 0] of current-patch) ]
+      ]
+      set index index + 1
+    ]
+    set path lput patch-to-analyze path
+
+    let intersection (patch-set [patch-at -1 2] of patch-to-analyze [patch-at 1 1] of patch-to-analyze [patch-at -2 0] of patch-to-analyze [patch-at 0 -1] of patch-to-analyze) with [member? self intersections]
+    let possible-goals (patch-set [patch-at 1 1] of intersection [patch-at 0 -2] of intersection [patch-at -1 0] of intersection [patch-at 2 -1] of intersection)
+    let current-choices possible-goals with [not member? self path]
+    let semaphore-goal min-one-of current-choices [ distance [ goal ] of myself ]
+    set path lput semaphore-goal path
+  ]
+  report path
 end
-to-report at-semaphore-goal
-  if (member? patch-here semaphore-goals) [ go-to-goal ]
-  report member? patch-here semaphore-goals
+
+;; intentions reporters
+to-report at-goal
+  if patch-here = (item 0 current-path) [
+    if goal = house and (member? patch-here [ neighbors4 ] of house) [
+      set goal work
+      set-path
+      report true
+    ]
+    if goal = work and (member? patch-here [ neighbors4 ] of work) [
+      set goal house
+      set-path
+      report true
+    ]
+    set current-path but-first current-path
+    report true
+  ]
+  report false
 end
 
 ; Copyright 2008 Uri Wilensky.
@@ -636,7 +647,7 @@ grid-size-y
 grid-size-y
 1
 6
-6.0
+4.0
 1
 1
 NIL
@@ -677,7 +688,7 @@ num-cars
 num-cars
 1
 400
-101.0
+65.0
 1
 1
 NIL
@@ -888,7 +899,7 @@ SWITCH
 543
 show-intentions
 show-intentions
-1
+0
 1
 -1000
 
@@ -942,7 +953,7 @@ num-persons
 num-persons
 0
 1000
-4.0
+28.0
 1
 1
 NIL

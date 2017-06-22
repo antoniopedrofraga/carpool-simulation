@@ -1,5 +1,8 @@
 __includes ["bdi.nls" "communication.nls"]
 
+breed [cars car]
+breed [persons person]
+
 globals
 [
   grid-x-inc               ;; the amount of patches in between two roads in the x direction
@@ -26,17 +29,30 @@ globals
   semaphore-goals
 ]
 
-turtles-own
+cars-own
 [
   speed     ;; the speed of the turtle
   up-car?   ;; true if the turtle moves downwards and false if it moves to the right
   wait-time ;; the amount of time since the last time a turtle has moved
+  capacity  ;; the car capacity
+  is-carpooler ;; the car can carpool
   work      ;; the patch where they work
   house     ;; the patch where they live
   goal      ;; where am I currently headed
+
   choices
   last-patch
   last-semaphore-goal
+
+  intentions
+  beliefs
+  incoming-queue
+]
+persons-own
+[
+  work      ;; the patch where a person works
+  house     ;; the patch where a person lives
+  goal      ;; where am I currently headed
 
   intentions
   beliefs
@@ -78,8 +94,6 @@ to setup
   ]
   ask one-of intersections [ become-current ]
 
-  set-default-shape turtles "car"
-
   if (num-cars > count roads) [
     user-message (word
       "There are too many cars for the amount of "
@@ -91,8 +105,19 @@ to setup
     stop
   ]
 
+  if (num-persons + num-cars > count goal-candidates) [
+    user-message (word
+      "There are too many persons and cars for the amount of "
+      "work and house .  Either increase the amount of roads "
+      "by increasing the GRID-SIZE-X or "
+      "GRID-SIZE-Y sliders, or decrease the "
+      "number of cars by lowering the NUM-CAR slider.\n"
+      "The setup has stopped.")
+    stop
+  ]
+
   ;; Now create the cars and have each created car call the functions setup-cars and set-car-color
-  create-turtles num-cars [
+  create-cars num-cars [
     setup-cars
     set-car-color ;; slower turtles are blue, faster ones are colored cyan
     record-data
@@ -103,8 +128,17 @@ to setup
     set goal work
   ]
 
+  create-persons num-persons [
+    ;; choose at random a location for the house
+    set house one-of goal-candidates
+    ;; choose at random a location for work, make sure work is not located at same location as house
+    set work one-of goal-candidates with [ self != [ house ] of myself ]
+    set goal work
+
+    setup-persons
+  ]
   ;; give the turtles an initial speed
-  ask turtles [ set-car-speed ]
+  ask cars [ set-car-speed ]
 
   reset-ticks
 end
@@ -211,6 +245,9 @@ end
 to setup-cars  ;; turtle procedure
   set speed 0
   set wait-time 0
+  set capacity num-passengers
+  set is-carpooler ifelse-value (random 100 < %-carpoolers) [true] [false]
+  ifelse (is-carpooler = true) [ set shape "car-carpooling" ][set shape "car"]
   set intentions []
   set incoming-queue []
   put-on-empty-road
@@ -230,9 +267,17 @@ to setup-cars  ;; turtle procedure
   go-to-goal
 end
 
+to setup-persons
+  set shape "person"
+  move-to house
+
+  set intentions []
+  set incoming-queue []
+end
+
 ;; Find a road patch without any turtles on it and place the turtle there.
 to put-on-empty-road  ;; turtle procedure
-  move-to one-of roads with [ not any? turtles-on self ]
+  move-to one-of roads with [ not any? cars-on self ]
 end
 
 
@@ -252,7 +297,7 @@ to go
 
   ;; set the cars’ speed, move them forward their speed, record data for plotting,
   ;; and set the color of the cars to an appropriate color based on their speed
-  ask turtles [
+  ask cars [
     record-data     ;; record data for plotting
     set-car-color   ;; set color to indicate speed
   ]
@@ -345,16 +390,16 @@ end
 ;; speed limit) based on whether there are turtles on the patch in front of the turtle
 to set-speed [ delta-x delta-y ]  ;; turtle procedure
   ;; get the turtles on the patch in front of the turtle
-  let turtles-ahead turtles-at delta-x delta-y
+  let cars-ahead cars-at delta-x delta-y
 
   ;; if there are turtles in front of the turtle, slow down
   ;; otherwise, speed up
-  ifelse any? turtles-ahead [
-    ifelse any? (turtles-ahead with [ up-car? != [ up-car? ] of myself ]) [
+  ifelse any? cars-ahead [
+    ifelse any? (cars-ahead with [ up-car? != [ up-car? ] of myself ]) [
       set speed 0
     ]
     [
-      set speed [speed] of one-of turtles-ahead
+      set speed [speed] of one-of cars-ahead
       slow-down
     ]
   ]
@@ -431,14 +476,11 @@ to-report next-patch
   ;; if I am going home and I am next to the patch that is my home
   ;; my goal gets set to the patch that is my work
   if goal = house and (member? patch-here [ neighbors4 ] of house) [
-
     set goal work
   ]
   ;; if I am going to work and I am next to the patch that is my work
   ;; my goal gets set to the patch that is my home
   if goal = work and (member? patch-here [ neighbors4 ] of work) [
-    ask goal [set pcolor 38]
-    ask house [set pcolor yellow]
     set goal house
   ]
   ;; CHOICES is an agentset of the candidate patches that the car can
@@ -463,7 +505,7 @@ end
 
 to watch-a-car
   stop-watching ;; in case we were previously watching another car
-  watch one-of turtles
+  watch one-of cars
   ask subject [
 
     inspect self
@@ -493,7 +535,7 @@ to stop-watching
     set plabel ""
   ]
   ;; make sure we close all turtle inspectors that may have been opened
-  ask turtles [
+  ask cars [
     set label ""
     stop-inspecting self
   ]
@@ -594,7 +636,7 @@ grid-size-y
 grid-size-y
 1
 6
-4.0
+6.0
 1
 1
 NIL
@@ -617,9 +659,9 @@ HORIZONTAL
 
 SWITCH
 10
-85
+185
 155
-118
+218
 power?
 power?
 0
@@ -635,7 +677,7 @@ num-cars
 num-cars
 1
 400
-1.0
+101.0
 1
 1
 NIL
@@ -695,9 +737,9 @@ NIL
 
 SLIDER
 10
-165
+280
 155
-198
+313
 speed-limit
 speed-limit
 0.1
@@ -710,9 +752,9 @@ HORIZONTAL
 
 MONITOR
 185
-125
+180
 290
-170
+225
 Current Phase
 phase
 3
@@ -721,9 +763,9 @@ phase
 
 SLIDER
 10
-130
+240
 155
-163
+273
 ticks-per-cycle
 ticks-per-cycle
 1
@@ -736,9 +778,9 @@ HORIZONTAL
 
 SLIDER
 160
-225
+340
 305
-258
+373
 current-phase
 current-phase
 0
@@ -751,9 +793,9 @@ HORIZONTAL
 
 BUTTON
 9
-265
+380
 154
-298
+413
 Change light
 change-light-at-current-intersection
 NIL
@@ -768,9 +810,9 @@ NIL
 
 SWITCH
 9
-225
+340
 154
-258
+373
 current-auto?
 current-auto?
 0
@@ -779,9 +821,9 @@ current-auto?
 
 BUTTON
 159
-265
+380
 304
-298
+413
 Select intersection
 choose-current
 T
@@ -796,9 +838,9 @@ NIL
 
 BUTTON
 10
-330
+445
 155
-363
+478
 watch a car
 watch-a-car
 NIL
@@ -813,9 +855,9 @@ NIL
 
 BUTTON
 160
-330
+445
 305
-363
+478
 stop watching
 stop-watching
 NIL
@@ -830,36 +872,81 @@ NIL
 
 SWITCH
 10
-395
+510
 152
-428
+543
 show_messages
 show_messages
-1
+0
 1
 -1000
 
 SWITCH
 160
-395
+510
 302
-428
+543
 show-intentions
 show-intentions
-0
+1
 1
 -1000
 
 SWITCH
 45
-475
+590
 247
-508
+623
 show-interface-intentions
 show-interface-intentions
 0
 1
 -1000
+
+SLIDER
+10
+85
+135
+118
+num-passengers
+num-passengers
+2
+5
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+150
+85
+310
+118
+%-carpoolers
+%-carpoolers
+0
+100
+6.0
+1
+1
+%
+HORIZONTAL
+
+SLIDER
+10
+130
+310
+163
+num-persons
+num-persons
+0
+1000
+4.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT
@@ -1065,6 +1152,16 @@ Circle -16777216 true false 180 180 90
 Polygon -16777216 true false 80 138 78 168 135 166 135 91 105 106 96 111 89 120
 Circle -7500403 true true 195 195 58
 Circle -7500403 true true 195 47 58
+
+car-carpooling
+true
+0
+Polygon -955883 true false 180 15 164 21 144 39 135 60 132 74 106 87 84 97 63 115 50 141 50 165 60 225 150 285 165 285 225 285 225 15 180 15
+Circle -16777216 true false 180 30 90
+Circle -16777216 true false 180 180 90
+Polygon -16777216 true false 80 138 78 168 135 166 135 91 105 106 96 111 89 120
+Circle -955883 true false 195 195 58
+Circle -955883 true false 195 47 58
 
 circle
 false

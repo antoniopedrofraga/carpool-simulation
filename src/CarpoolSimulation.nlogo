@@ -27,6 +27,9 @@ globals
   downRoad
   rightRoad
 
+  num-persons-carpooling
+  num-cars-carpooling
+
   semaphores
   semaphore-goals
 ]
@@ -145,10 +148,7 @@ to setup
 
   create-persons num-persons [
     set color yellow
-    let discrepancy (random waiting-discrepancy) / 100
-    ifelse random 2 = 0
-      [ set limit-wait-time ticks-of-waiting + (ticks-of-waiting * discrepancy) ]
-      [ set limit-wait-time ticks-of-waiting - (ticks-of-waiting * discrepancy)  ]
+    setup-limit-wait-time
     setup-goal
 
     setup-persons
@@ -159,7 +159,12 @@ to setup
 
   reset-ticks
 end
-
+to setup-limit-wait-time
+  let discrepancy (random waiting-discrepancy) / 100
+    ifelse random 2 = 0
+      [ set limit-wait-time ticks-of-waiting + (ticks-of-waiting * discrepancy) ]
+      [ set limit-wait-time ticks-of-waiting - (ticks-of-waiting * discrepancy)  ]
+end
 ;; Setup goal fro cars and persons
 to setup-goal
   ;; choose at random a location for the house
@@ -175,6 +180,8 @@ to setup-globals
   set num-cars-stopped 0
   set grid-x-inc world-width / grid-size-x
   set grid-y-inc world-height / grid-size-y
+  set num-cars-carpooling 0
+  set num-persons-carpooling 0
 
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
   set acceleration 0.099
@@ -463,14 +470,18 @@ to wait-for-messages
   if get-performative msg = "query-if" and get-content msg = "able-to-carpool?" [
     ifelse (passengers < num-passengers - 1) [
       send add-content "yes" create-reply "inform" msg
+      if passengers = 0 [ set num-cars-carpooling num-cars-carpooling + 1 ]
       set passengers passengers + 1
+      set num-persons-carpooling num-persons-carpooling + 1
     ][
       send add-content "no" create-reply "inform" msg
     ]
   ]
   if get-performative msg = "inform" [
     if (get-content msg = "was-left") [
+      if passengers = 1 [ set num-cars-carpooling num-cars-carpooling - 1 ]
       set passengers passengers - 1
+      set num-persons-carpooling num-persons-carpooling - 1
     ]
   ]
 end
@@ -561,6 +572,7 @@ to find-a-carpooler
   ]
   if wait-time > limit-wait-time [
     set wait-time 0
+    setup-limit-wait-time
     setup-goal
     move-to house
     set shape "person"
@@ -916,10 +928,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-965
-200
-1070
-245
+960
+425
+1065
+470
 Current Phase
 phase
 3
@@ -1107,7 +1119,7 @@ num-persons
 num-persons
 0
 200
-100.0
+107.0
 1
 1
 NIL
@@ -1137,7 +1149,7 @@ waiting-discrepancy
 waiting-discrepancy
 15
 80
-20.0
+25.0
 1
 1
 %
@@ -1153,6 +1165,42 @@ small-world
 1
 1
 -1000
+
+PLOT
+965
+210
+1180
+375
+Persons Carpooling
+persons
+time
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot num-persons-carpooling"
+
+PLOT
+1190
+210
+1405
+375
+Cars Carpooling
+time
+cars
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot num-cars-carpooling"
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT

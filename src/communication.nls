@@ -32,7 +32,11 @@ to send [msg]
   let recv 0
   foreach recipients [ recipient ->
    set recv turtle (read-from-string recipient)
-   if recv != nobody [without-interruption [ask recv [receive msg]]] ;; read-from-string is required to convert the string to number
+   if recv != nobody [
+      without-interruption [ask recv [
+        receive msg
+      ]]
+   ]
   ]
 end
 
@@ -40,7 +44,7 @@ end
 ;;; Message reception deals with updating incoming-queue
 to receive [msg]
    if show_messages [show msg]
-   set incoming-queue lput msg incoming-queue
+  set incoming-queue lput msg incoming-queue
 end 
 
 ;; This reporter returns the next message in the list and removes it from the queue.

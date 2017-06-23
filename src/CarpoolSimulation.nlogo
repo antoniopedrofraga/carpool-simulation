@@ -12,6 +12,8 @@ globals
   phase                    ;; keeps track of the phase
   num-cars-stopped         ;; the number of cars that are stopped during a single pass thru the go procedure
   current-intersection     ;; the currently selected intersection
+  carpoolers               ;; a list of carpoolers
+  goal-candidates
 
   ;; patch agentsets
   intersections ;; agentset containing the patches that are intersections
@@ -41,15 +43,24 @@ cars-own
   current-path ;;the path to take
   goal      ;; where am I currently headed
 
+  passengers ;; list of passengers
+
   intentions
   beliefs
   incoming-queue
 ]
 persons-own
 [
+  wait-time ;; the amount of time since the last time a turtle has moved
+  limit-wait-time ;; the limit amount of waiting time
+
   work      ;; the patch where a person works
   house     ;; the patch where a person lives
   goal      ;; where am I currently headed
+
+  carpooler ;; carpooler car
+  carpooled
+  response-received
 
   intentions
   beliefs
@@ -81,12 +92,13 @@ patches-own
 to setup
 
   clear-all
+  set-patch-size 16
   setup-globals
   setup-patches  ;; ask the patches to draw themselves and set up a few variables
 
   ;; Make an agentset of all patches where there can be a house or road
   ;; those patches with the background color shade of brown and next to a road
-  let goal-candidates patches with [
+  set goal-candidates patches with [
     pcolor = 38 and any? neighbors with [ pcolor = white ]
   ]
   ask one-of intersections [ become-current ]
@@ -118,24 +130,23 @@ to setup
     setup-cars
     set-car-color ;; slower turtles are blue, faster ones are colored cyan
     record-data
-    ;; choose at random a location for the house
-    set house one-of goal-candidates
-    ;; choose at random a location for work, make sure work is not located at same location as house
-    set work one-of goal-candidates with [ self != [ house ] of myself ]
-    set goal work
+    setup-goal
 
     set current-path get-path
     go-to-goal
   ]
+  set carpoolers cars with [ is-carpooler = true ]
 
   create-persons num-persons [
-    ;; choose at random a location for the house
-    set house one-of goal-candidates
-    ;; choose at random a location for work, make sure work is not located at same location as house
-    set work one-of goal-candidates with [ self != [ house ] of myself ]
-    set goal work
+    set color yellow
+    let discrepancy (random waiting-discrepancy) / 100
+    ifelse random 2 = 0
+      [ set limit-wait-time ticks-of-waiting + (ticks-of-waiting * discrepancy) ]
+      [ set limit-wait-time ticks-of-waiting - (ticks-of-waiting * discrepancy)  ]
+    setup-goal
 
     setup-persons
+    ask-for-carpool
   ]
   ;; give the turtles an initial speed
   ask cars [ set-car-speed ]
@@ -143,6 +154,14 @@ to setup
   reset-ticks
 end
 
+;; Setup goal fro cars and persons
+to setup-goal
+  ;; choose at random a location for the house
+  set house one-of goal-candidates
+  ;; choose at random a location for work, make sure work is not located at same location as house
+  set work one-of goal-candidates with [ self != [ house ] of myself ]
+  set goal work
+end
 ;; Initialize the global variables to appropriate values
 to setup-globals
   set current-intersection nobody ;; just for now, since there are no intersections yet
@@ -248,6 +267,7 @@ to setup-cars  ;; turtle procedure
   set capacity num-passengers
   set is-carpooler ifelse-value (random 100 < %-carpoolers) [true] [false]
   ifelse (is-carpooler = true) [ set shape "car-carpooling" ][set shape "car"]
+  set passengers []
   set intentions []
   set incoming-queue []
   put-on-empty-road
@@ -271,6 +291,8 @@ to setup-persons
   set shape "person"
   move-to house
 
+  set response-received false
+  set carpooler nobody
   set intentions []
   set incoming-queue []
 end
@@ -427,6 +449,38 @@ to set-car-color  ;; turtle procedure
     [ set color cyan - 2 ]
 end
 
+;;; Main intention that listens and responds to messages.
+to wait-for-messages
+  let msg get-message
+  if msg = "no_message" [stop]
+  let sender get-sender msg
+  if get-performative msg = "query" and get-content msg = "able-to-carpool?" [
+    ifelse (length passengers < num-passengers - 1) [
+      send add-content "yes" create-reply "inform" msg
+    ][
+      send add-content "no" create-reply "inform" msg
+    ]
+  ]
+end
+to wait-for-responses
+  let msg get-message
+  if msg = "no_message" [stop]
+  let sender get-sender msg
+  if get-performative msg = "inform" [
+    if (get-content msg = "yes") [
+      set shape "face happy"
+      set carpooler turtle (read-from-string sender)
+      set response-received true
+      set wait-time 0
+      add-intention "pick-me-up" "picked-up"
+    ]
+    if (get-content msg = "no") [
+      set carpooler nobody
+      set response-received true
+    ]
+  ]
+end
+
 ;; keep track of the number of stopped cars and the amount of time a car has been stopped
 ;; if its speed is 0
 to record-data  ;; turtle procedure
@@ -450,6 +504,62 @@ to next-phase
   set phase phase + 1
   if phase mod ticks-per-cycle = 0 [ set phase 0 ]
 end
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Intention Procedures ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Set the intention of finding a carpooler
+to ask-for-carpool
+  add-intention "find-a-carpooler" "carpool-found"
+end
+to pick-me-up
+  let pickable-group [neighbors4] of carpooler
+  if member? patch-here pickable-group [
+    hide-turtle
+  ]
+end
+to leave-me-there
+  let pickable-group [neighbors4] of carpooler
+  if member? goal pickable-group [
+    move-to goal
+    set shape "person"
+    show-turtle
+  ]
+end
+to find-a-carpooler
+  let start ifelse-value (work = goal) [ house ][ work ]
+  set start one-of ([ neighbors4 ] of start) with [member? self roads]
+  let finish goal
+  set finish one-of ([ neighbors4 ] of finish) with [member? self roads]
+
+  let suitable-carpooler one-of carpoolers with [ am-i-a-suitable-carpooler self start finish ]
+  if suitable-carpooler != nobody [
+    set response-received false
+    add-intention "wait-for-responses" "response-was-received"
+    send add-receiver ([who] of suitable-carpooler) add-content "able-to-carpool?" create-message "query"
+  ]
+  set wait-time wait-time + 1
+  if wait-time > 0.75 * limit-wait-time [
+    set shape "face sad"
+    set color blue
+  ]
+  if wait-time > limit-wait-time [
+    set wait-time 0
+    setup-goal
+    move-to house
+    set shape "person"
+    set color yellow
+  ]
+end
+to-report am-i-a-suitable-carpooler [candidate start finish]
+  let start-position position start ([current-path] of candidate)
+  if start-position = false [ report false ]
+  let finish-position position finish [current-path] of candidate
+  if finish-position = false [ report false ]
+  report start-position < finish-position
+end
 ;; Set the intention to go to goal
 to go-to-goal
   add-intention "next-patch-to-goal" "at-goal"
@@ -459,6 +569,7 @@ to set-path
   go-to-goal
 end
 to next-patch-to-goal
+  wait-for-messages
   face next-patch ;; car heads towards its goal
   set-car-speed
   fd speed
@@ -540,8 +651,9 @@ to-report get-path
         [ ([patch-at (index * -1) 0] of current-patch) ]
       ]
       set index index + 1
+
+      set path lput patch-to-analyze path
     ]
-    set path lput patch-to-analyze path
 
     let intersection (patch-set [patch-at -1 2] of patch-to-analyze [patch-at 1 1] of patch-to-analyze [patch-at -2 0] of patch-to-analyze [patch-at 0 -1] of patch-to-analyze) with [member? self intersections]
     let possible-goals (patch-set [patch-at 1 1] of intersection [patch-at 0 -2] of intersection [patch-at -1 0] of intersection [patch-at 2 -1] of intersection)
@@ -571,6 +683,32 @@ to-report at-goal
   ]
   report false
 end
+to-report response-was-received
+  report response-received = true
+end
+to-report carpool-found
+  report carpooler != nobody
+end
+to-report picked-up
+  if (hidden?) [
+    add-intention "leave-me-there" "was-left"
+    report true
+  ]
+  report false
+end
+to-report was-left
+  if (hidden? = false) [
+    if goal = house and (member? [patch-here] of carpooler [ neighbors4 ] of house) [
+      set goal work
+    ]
+    if goal = work and (member? [patch-here] of carpooler [ neighbors4 ] of work) [
+      set goal house
+    ]
+    ask-for-carpool
+    report true
+  ]
+  report false
+end
 
 ; Copyright 2008 Uri Wilensky.
 ; See Info tab for full copyright and license.
@@ -578,11 +716,11 @@ end
 GRAPHICS-WINDOW
 327
 10
-945
-629
+927
+611
 -1
 -1
-16.5
+16.0
 1
 15
 1
@@ -603,9 +741,9 @@ ticks
 30.0
 
 PLOT
-1405
+1410
 10
-1623
+1628
 185
 Average Wait Time of Cars
 Time
@@ -618,7 +756,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of turtles"
+"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of cars"
 
 PLOT
 1187
@@ -636,7 +774,7 @@ true
 false
 "set-plot-y-range 0 speed-limit" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [speed] of turtles"
+"default" 1.0 0 -16777216 true "" "plot mean [speed] of cars"
 
 SLIDER
 110
@@ -646,8 +784,8 @@ SLIDER
 grid-size-y
 grid-size-y
 1
-6
-4.0
+9
+3.0
 1
 1
 NIL
@@ -661,18 +799,18 @@ SLIDER
 grid-size-x
 grid-size-x
 1
-6
-4.0
+9
+3.0
 1
 1
 NIL
 HORIZONTAL
 
 SWITCH
-10
-185
-155
-218
+170
+170
+310
+203
 power?
 power?
 0
@@ -688,7 +826,7 @@ num-cars
 num-cars
 1
 400
-65.0
+43.0
 1
 1
 NIL
@@ -748,24 +886,24 @@ NIL
 
 SLIDER
 10
-280
+210
 155
-313
+243
 speed-limit
 speed-limit
 0.1
 1
-0.5
+0.6
 0.1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-185
-180
-290
-225
+965
+200
+1070
+245
 Current Phase
 phase
 3
@@ -774,9 +912,9 @@ phase
 
 SLIDER
 10
-240
+170
 155
-273
+203
 ticks-per-cycle
 ticks-per-cycle
 1
@@ -789,9 +927,9 @@ HORIZONTAL
 
 SLIDER
 160
-340
 305
-373
+305
+338
 current-phase
 current-phase
 0
@@ -804,9 +942,9 @@ HORIZONTAL
 
 BUTTON
 9
-380
+345
 154
-413
+378
 Change light
 change-light-at-current-intersection
 NIL
@@ -821,9 +959,9 @@ NIL
 
 SWITCH
 9
-340
+305
 154
-373
+338
 current-auto?
 current-auto?
 0
@@ -832,9 +970,9 @@ current-auto?
 
 BUTTON
 159
-380
+345
 304
-413
+378
 Select intersection
 choose-current
 T
@@ -849,9 +987,9 @@ NIL
 
 BUTTON
 10
-445
+410
 155
-478
+443
 watch a car
 watch-a-car
 NIL
@@ -866,9 +1004,9 @@ NIL
 
 BUTTON
 160
-445
+410
 305
-478
+443
 stop watching
 stop-watching
 NIL
@@ -883,9 +1021,9 @@ NIL
 
 SWITCH
 10
-510
+475
 152
-543
+508
 show_messages
 show_messages
 0
@@ -894,20 +1032,20 @@ show_messages
 
 SWITCH
 160
-510
+475
 302
-543
+508
 show-intentions
 show-intentions
-0
+1
 1
 -1000
 
 SWITCH
 45
-590
+555
 247
-623
+588
 show-interface-intentions
 show-interface-intentions
 0
@@ -938,7 +1076,7 @@ SLIDER
 %-carpoolers
 0
 100
-6.0
+53.0
 1
 1
 %
@@ -952,11 +1090,41 @@ SLIDER
 num-persons
 num-persons
 0
-1000
-28.0
+10
+9.0
 1
 1
 NIL
+HORIZONTAL
+
+SLIDER
+10
+255
+155
+288
+ticks-of-waiting
+ticks-of-waiting
+100
+1000
+100.0
+50
+1
+ticks
+HORIZONTAL
+
+SLIDER
+165
+255
+305
+288
+waiting-discrepancy
+waiting-discrepancy
+15
+80
+42.0
+1
+1
+%
 HORIZONTAL
 
 @#$#@#$#@

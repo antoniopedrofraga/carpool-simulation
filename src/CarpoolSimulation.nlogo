@@ -43,7 +43,7 @@ cars-own
   current-path ;;the path to take
   goal      ;; where am I currently headed
 
-  passengers ;; list of passengers
+  passengers ;; passengers
 
   intentions
   beliefs
@@ -92,7 +92,13 @@ patches-own
 to setup
 
   clear-all
-  set-patch-size 16
+  ifelse small-world [
+    set-patch-size 10
+    resize-world -30 30 -30 30
+  ][
+    set-patch-size 16
+    resize-world -18 18 -18 18
+  ]
   setup-globals
   setup-patches  ;; ask the patches to draw themselves and set up a few variables
 
@@ -267,7 +273,7 @@ to setup-cars  ;; turtle procedure
   set capacity num-passengers
   set is-carpooler ifelse-value (random 100 < %-carpoolers) [true] [false]
   ifelse (is-carpooler = true) [ set shape "car-carpooling" ][set shape "car"]
-  set passengers []
+  set passengers 0
   set intentions []
   set incoming-queue []
   put-on-empty-road
@@ -454,11 +460,17 @@ to wait-for-messages
   let msg get-message
   if msg = "no_message" [stop]
   let sender get-sender msg
-  if get-performative msg = "query" and get-content msg = "able-to-carpool?" [
-    ifelse (length passengers < num-passengers - 1) [
+  if get-performative msg = "query-if" and get-content msg = "able-to-carpool?" [
+    ifelse (passengers < num-passengers - 1) [
       send add-content "yes" create-reply "inform" msg
+      set passengers passengers + 1
     ][
       send add-content "no" create-reply "inform" msg
+    ]
+  ]
+  if get-performative msg = "inform" [
+    if (get-content msg = "was-left") [
+      set passengers passengers - 1
     ]
   ]
 end
@@ -469,10 +481,12 @@ to wait-for-responses
   if get-performative msg = "inform" [
     if (get-content msg = "yes") [
       set shape "face happy"
+      set color yellow
       set carpooler turtle (read-from-string sender)
       set response-received true
       set wait-time 0
       add-intention "pick-me-up" "picked-up"
+      send add-content "carpool" create-reply "request" msg
     ]
     if (get-content msg = "no") [
       set carpooler nobody
@@ -538,7 +552,7 @@ to find-a-carpooler
   if suitable-carpooler != nobody [
     set response-received false
     add-intention "wait-for-responses" "response-was-received"
-    send add-receiver ([who] of suitable-carpooler) add-content "able-to-carpool?" create-message "query"
+    send add-receiver ([who] of suitable-carpooler) add-content "able-to-carpool?" create-message "query-if"
   ]
   set wait-time wait-time + 1
   if wait-time > 0.75 * limit-wait-time [
@@ -659,6 +673,7 @@ to-report get-path
     let possible-goals (patch-set [patch-at 1 1] of intersection [patch-at 0 -2] of intersection [patch-at -1 0] of intersection [patch-at 2 -1] of intersection)
     let current-choices possible-goals with [not member? self path]
     let semaphore-goal min-one-of current-choices [ distance [ goal ] of myself ]
+
     set path lput semaphore-goal path
   ]
   report path
@@ -704,6 +719,7 @@ to-report was-left
     if goal = work and (member? [patch-here] of carpooler [ neighbors4 ] of work) [
       set goal house
     ]
+    send add-receiver ([who] of carpooler) add-content "was-left" create-message "inform"
     ask-for-carpool
     report true
   ]
@@ -826,7 +842,7 @@ num-cars
 num-cars
 1
 400
-43.0
+52.0
 1
 1
 NIL
@@ -1076,7 +1092,7 @@ SLIDER
 %-carpoolers
 0
 100
-53.0
+35.0
 1
 1
 %
@@ -1090,8 +1106,8 @@ SLIDER
 num-persons
 num-persons
 0
-10
-9.0
+200
+100.0
 1
 1
 NIL
@@ -1121,11 +1137,22 @@ waiting-discrepancy
 waiting-discrepancy
 15
 80
-42.0
+20.0
 1
 1
 %
 HORIZONTAL
+
+SWITCH
+170
+210
+310
+243
+small-world
+small-world
+1
+1
+-1000
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT

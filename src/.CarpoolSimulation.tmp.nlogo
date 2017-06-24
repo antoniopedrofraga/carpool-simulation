@@ -745,11 +745,11 @@ end
 GRAPHICS-WINDOW
 327
 10
-927
-611
+945
+629
 -1
 -1
-16.0
+10.0
 1
 15
 1
@@ -759,10 +759,10 @@ GRAPHICS-WINDOW
 1
 1
 1
--18
-18
--18
-18
+-30
+30
+-30
+30
 1
 1
 1
@@ -814,7 +814,7 @@ grid-size-y
 grid-size-y
 1
 9
-3.0
+6.0
 1
 1
 NIL
@@ -829,7 +829,7 @@ grid-size-x
 grid-size-x
 1
 9
-3.0
+6.0
 1
 1
 NIL
@@ -1094,7 +1094,7 @@ SLIDER
 %-carpoolers
 0
 100
-20.0
+75.0
 1
 1
 %
@@ -1109,7 +1109,7 @@ num-persons
 num-persons
 0
 200
-60.0
+100.0
 1
 1
 NIL
@@ -1152,7 +1152,7 @@ SWITCH
 243
 small-world
 small-world
-1
+0
 1
 -1000
 

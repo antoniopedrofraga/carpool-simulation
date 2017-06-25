@@ -18,6 +18,7 @@ globals
   ;; patch agentsets
   intersections ;; agentset containing the patches that are intersections
   roads         ;; agentset containing the patches that are roads
+  intersection-patches
 
   high-populated-area
 
@@ -29,6 +30,7 @@ globals
   downRoad
   rightRoad
 
+  num-waiting-persons
   num-persons-carpooling
   num-cars-carpooling
 
@@ -125,6 +127,15 @@ to setup
   set goal-candidates patches with [
     pcolor = 38 and any? neighbors with [ pcolor = white ]
   ]
+  set intersection-patches patches with [
+    member? patch-at 0 1 intersections
+    or
+    member? patch-at -1 0 intersections
+    or
+    member? patch-at -1 -1 intersections
+    or
+    member? patch-at 0 0 intersections
+  ]
 
   if priority-areas [
     set high-populated-area get-high-populated-area xop-priority yop-priority xdp-priority ydp-priority
@@ -194,7 +205,8 @@ to setup
   reset-ticks
 end
 to setup-limit-wait-time
-  let discrepancy (random waiting-discrepancy) / 100
+  let discrepancy (random waiting-discrepancy + 1) / 100
+  set limit-wait-time 0
     ifelse random 2 = 0
       [ set limit-wait-time ticks-of-waiting + (ticks-of-waiting * discrepancy) ]
       [ set limit-wait-time ticks-of-waiting - (ticks-of-waiting * discrepancy)  ]
@@ -204,13 +216,13 @@ to setup-goal
   ifelse priority-areas  [
     let area high-populated-area
 
-    let probability-house random 100 < %-population
+    let probability-house random 100 + 1 < %-population
     ifelse probability-house [
       set house one-of goal-candidates with [member? self area]
     ][
       set house one-of goal-candidates with [not member? self area]
     ]
-    let probability-work random 100 < %-population
+    let probability-work random 100 + 1 < %-population
     ifelse probability-work [
       set work one-of goal-candidates with [ self != [ house ] of myself and member? self area ]
     ][
@@ -234,6 +246,7 @@ to setup-globals
   set grid-y-inc world-height / grid-size-y
   set num-cars-carpooling 0
   set num-persons-carpooling 0
+  set num-waiting-persons 0
   set mouse-was-down? false
 
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
@@ -591,12 +604,14 @@ to wait-for-responses
       set carpooler turtle (read-from-string sender)
       set response-received true
       set wait-time 0
+      set num-waiting-persons num-waiting-persons + 1
       add-intention "pick-me-up" "picked-up"
       send add-content "carpool" create-reply "request" msg
     ]
     if (get-content msg = "no") [
       set carpooler nobody
       set response-received true
+      ask-for-carpool
     ]
   ]
 end
@@ -754,8 +769,8 @@ end
 to-report get-path
   let path []
   set path lput patch-here path
-  while [item (length path - 1) path != goal] [
-    let current-patch item (length path - 1) path
+  while [last path != goal] [
+    let current-patch last path
     let patch-to-analyze current-patch
     let index 1
     while [not member? patch-to-analyze semaphores] [
@@ -779,10 +794,10 @@ to-report get-path
 
     let intersection (patch-set [patch-at -1 2] of patch-to-analyze [patch-at 1 1] of patch-to-analyze [patch-at -2 0] of patch-to-analyze [patch-at 0 -1] of patch-to-analyze) with [member? self intersections]
     let possible-goals (patch-set [patch-at 1 1] of intersection [patch-at 0 -2] of intersection [patch-at -1 0] of intersection [patch-at 2 -1] of intersection)
-    let current-choices possible-goals with [not member? self path]
+    let current-choices possible-goals with [ not member? self path or member? self intersection-patches ]
     let semaphore-goal min-one-of current-choices [ distance [ goal ] of myself ]
 
-    set path lput semaphore-goal path
+    set path get-path-at-intersection path patch-to-analyze semaphore-goal
   ]
   report path
 end
@@ -815,6 +830,7 @@ end
 to-report picked-up
   if (hidden?) [
     add-intention "leave-me-there" "was-left"
+    set num-waiting-persons num-waiting-persons - 1
     report true
   ]
   report false
@@ -828,10 +844,52 @@ to-report was-left
       set goal house
     ]
     send add-receiver ([who] of carpooler) add-content "was-left" create-message "inform"
-    ask-for-carpool
+    set carpooler nobody
     report true
   ]
   report false
+end
+to-report get-path-at-intersection [intersection-path current-patch goal-patch]
+  let candidates ifelse-value (member? current-patch roadsA) [
+     ifelse-value (member? current-patch upRoad)
+    [(patch-set current-patch  ([patch-at 0 1] of current-patch) ([patch-at 0 2] of current-patch))]
+     [(patch-set current-patch ([patch-at 1 0] of current-patch) ([patch-at 2 0] of current-patch))]
+  ][
+    ifelse-value (member? current-patch downRoad)
+    [(patch-set current-patch ([patch-at 0 -1] of current-patch) ([patch-at 0 -2] of current-patch))]
+    [(patch-set current-patch ([patch-at -1 0] of current-patch) ([patch-at -2 0] of current-patch))]
+  ]
+  let direction ifelse-value (member? current-patch roadsA) [
+     ifelse-value (member? current-patch upRoad)
+    ["up"]
+     ["right"]
+  ][
+    ifelse-value (member? current-patch downRoad)
+    ["down"]
+    ["left"]
+  ]
+
+  let patch-to-analyze current-patch
+  while [patch-to-analyze != goal-patch][
+    ifelse member? patch-to-analyze candidates and patch-to-analyze != min-one-of candidates [ distance [ goal-patch ] of self ][
+      ifelse (direction = "up" or direction = "right") [
+        ifelse (direction = "up")
+        [ set intersection-path lput ([patch-at 0 1] of patch-to-analyze) intersection-path ]
+        [ set intersection-path lput ([patch-at 1 0] of patch-to-analyze) intersection-path ]
+      ] [
+        ifelse (direction = "down")
+        [ set intersection-path lput ([patch-at 0 -1] of patch-to-analyze) intersection-path ]
+        [ set intersection-path lput ([patch-at -1 0] of patch-to-analyze) intersection-path ]
+      ]
+    ][
+      let next ifelse-value (member? patch-to-analyze ([neighbors4] of goal-patch))
+      [ goal-patch ]
+      [min-one-of ([neighbors4] of patch-to-analyze) [ distance [ goal-patch ] of self ]]
+      set intersection-path lput next intersection-path
+    ]
+    set patch-to-analyze last intersection-path
+  ]
+  report intersection-path
 end
 
 to-report get-high-populated-area [x1 y1 x2 y2]
@@ -924,7 +982,7 @@ grid-size-y
 grid-size-y
 1
 9
-5.0
+6.0
 1
 1
 NIL
@@ -939,7 +997,7 @@ grid-size-x
 grid-size-x
 1
 9
-5.0
+6.0
 1
 1
 NIL
@@ -965,7 +1023,7 @@ num-cars
 num-cars
 1
 400
-99.0
+92.0
 1
 1
 NIL
@@ -1032,17 +1090,17 @@ speed-limit
 speed-limit
 0.1
 1
-0.5
+0.4
 0.1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-965
-465
-1070
-510
+1685
+80
+1790
+125
 Current Phase
 phase
 3
@@ -1219,7 +1277,7 @@ num-persons
 num-persons
 0
 200
-102.0
+90.0
 1
 1
 NIL
@@ -1272,8 +1330,8 @@ PLOT
 1180
 375
 Persons Carpooling
-persons
 time
+persons
 0.0
 10.0
 0.0
@@ -1309,14 +1367,14 @@ SWITCH
 583
 priority-areas
 priority-areas
-0
+1
 1
 -1000
 
 MONITOR
-965
+1025
 390
-1070
+1130
 435
 Persons Carpooling
 num-persons-carpooling
@@ -1325,9 +1383,9 @@ num-persons-carpooling
 11
 
 MONITOR
-1190
+1250
 390
-1287
+1347
 435
 Cars Carpooling
 num-cars-carpooling
@@ -1342,7 +1400,7 @@ MONITOR
 640
 xop
 xop-priority
-17
+3
 1
 11
 
@@ -1353,7 +1411,7 @@ MONITOR
 640
 yop
 yop-priority
-17
+3
 1
 11
 
@@ -1364,7 +1422,7 @@ MONITOR
 640
 xdp
 xdp-priority
-17
+3
 1
 11
 
@@ -1375,7 +1433,7 @@ MONITOR
 640
 ydp
 ydp-priority
-17
+3
 1
 11
 
@@ -1388,7 +1446,7 @@ SLIDER
 %-population
 0
 100
-84.0
+70.0
 1
 1
 %
@@ -1410,6 +1468,42 @@ NIL
 NIL
 NIL
 1
+
+PLOT
+1415
+210
+1630
+375
+% of Persons Carpooling
+time
+% of persons
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot ( num-persons-carpooling / num-persons ) * 100"
+
+PLOT
+1640
+210
+1855
+375
+Persons Waiting for Car
+time
+persons
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot num-waiting-persons"
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT

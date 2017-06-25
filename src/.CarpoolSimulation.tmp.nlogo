@@ -19,6 +19,8 @@ globals
   intersections ;; agentset containing the patches that are intersections
   roads         ;; agentset containing the patches that are roads
 
+  high-populated-area
+
   roadsA
   roadsB
 
@@ -32,6 +34,12 @@ globals
 
   semaphores
   semaphore-goals
+
+  xop-priority
+  xdp-priority
+  yop-priority
+  ydp-priority
+  mouse-was-down?
 ]
 
 cars-own
@@ -82,6 +90,7 @@ patches-own
   my-phase        ;; the phase for the intersection.  -1 for non-intersection patches.
   auto?           ;; whether or not this intersection will switch automatically.
                   ;; false for non-intersection patches.
+  actual-color
 ]
 
 
@@ -94,7 +103,13 @@ patches-own
 ;; be created per road patch.
 to setup
 
-  clear-all
+  clear-ticks
+  clear-turtles
+  clear-patches
+  clear-drawing
+  clear-all-plots
+  clear-output
+
   ifelse small-world [
     set-patch-size 10
     resize-world -30 30 -30 30
@@ -109,6 +124,25 @@ to setup
   ;; those patches with the background color shade of brown and next to a road
   set goal-candidates patches with [
     pcolor = 38 and any? neighbors with [ pcolor = white ]
+  ]
+
+  if priority-areas [
+    set high-populated-area get-high-populated-area xop-priority yop-priority xdp-priority ydp-priority
+    let possible-goal one-of high-populated-area with [member? one-of [neighbors4] of self goal-candidates]
+    if possible-goal = nobody [
+      user-message (word
+      "No possible goal was found"
+      ".  Either change the priority area "
+      "by clicking on Select Priority Area "
+      "button, or turn off priority area button "
+      "by disbaling the Priority Area switcher.\n"
+      "The setup has stopped.")
+    stop
+    ]
+  ]
+
+  ask patches [
+    set actual-color pcolor
   ]
   ask one-of intersections [ become-current ]
 
@@ -167,11 +201,29 @@ to setup-limit-wait-time
 end
 ;; Setup goal fro cars and persons
 to setup-goal
-  ;; choose at random a location for the house
-  set house one-of goal-candidates
-  ;; choose at random a location for work, make sure work is not located at same location as house
-  set work one-of goal-candidates with [ self != [ house ] of myself ]
-  set goal work
+  ifelse priority-areas  [
+    let area high-populated-area
+
+    let probability-house random 100 < %-population
+    ifelse probability-house [
+      set house one-of goal-candidates with [member? self area]
+    ][
+      set house one-of goal-candidates with [not member? self area]
+    ]
+    let probability-work random 100 < %-population
+    ifelse probability-work [
+      set work one-of goal-candidates with [ self != [ house ] of myself and member? self area ]
+    ][
+      set work one-of goal-candidates with [ self != [ house ] of myself and not member? self area ]
+    ]
+    set goal work
+  ] [
+    ;; choose at random a location for the house
+    set house one-of goal-candidates
+    ;; choose at random a location for work, make sure work is not located at same location as house
+    set work one-of goal-candidates with [ self != [ house ] of myself ]
+    set goal work
+  ]
 end
 ;; Initialize the global variables to appropriate values
 to setup-globals
@@ -182,6 +234,7 @@ to setup-globals
   set grid-y-inc world-height / grid-size-y
   set num-cars-carpooling 0
   set num-persons-carpooling 0
+  set mouse-was-down? false
 
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
   set acceleration 0.099
@@ -358,6 +411,42 @@ to choose-current
   ]
 end
 
+to choose-priority-area
+  let complete? false
+
+  if not complete? [
+    if mouse-down? and not mouse-was-down? [
+      set xop-priority mouse-xcor
+      set yop-priority mouse-ycor
+      set mouse-was-down? true
+    ]
+    if not mouse-down? and mouse-was-down? [
+      set xdp-priority mouse-xcor
+      set ydp-priority mouse-ycor
+      set mouse-was-down? false
+      set complete? true
+      ask patches [
+        set pcolor actual-color
+      ]
+      stop
+    ]
+  ]
+  while[mouse-down? and mouse-was-down?] [
+    let area get-high-populated-area xop-priority yop-priority mouse-xcor mouse-ycor
+    let not-area patches with [not member? self area]
+    ask area [
+      set pcolor orange
+    ]
+    ask not-area [
+      set pcolor actual-color
+    ]
+    display
+    ]
+end
+to-report mouse-clicked?
+  report (mouse-was-down? = true and not mouse-down?)
+end
+
 ;; Set up the current intersection and the interface to change it.
 to become-current ;; patch procedure
   set current-intersection self
@@ -415,9 +504,15 @@ to set-car-speed  ;; turtle procedure
     set speed 0
   ]
   [
-    ifelse up-car?
-      [ set-speed 0 -1 ]
-      [ set-speed 1 0 ]
+    ifelse (member? pat roadsA) [
+        ifelse (member? patch-to-analyze upRoad)
+        [ set-speed 0 1 ]
+        [ set-speed 1 0 ]
+      ] [
+        ifelse (member? patch-to-analyze downRoad)
+        [ set-speed 0 -1 ]
+        [ set-speed -1 0 ]
+      ]
   ]
 end
 
@@ -739,6 +834,21 @@ to-report was-left
   report false
 end
 
+to-report get-high-populated-area [x1 y1 x2 y2]
+  report ifelse-value (x1 >= x2) [
+      ifelse-value (y1 >= y2) [
+        patches with [pxcor <= x1 and pxcor >= x2 and pycor <= y1 and pycor >= y2]
+      ][
+        patches with [pxcor <= x1 and pxcor >= x2 and pycor >= y1 and pycor <= y2]
+      ]
+      ] [
+      ifelse-value (y1 >= y2) [
+        patches with [pxcor >= x1 and pxcor <= x2 and pycor <= y1 and pycor >= y2]
+      ][
+        patches with [pxcor >= x1 and pxcor <= x2 and pycor >= y1 and pycor <= y2]
+      ]
+  ]
+end
 ; Copyright 2008 Uri Wilensky.
 ; See Info tab for full copyright and license.
 @#$#@#$#@
@@ -814,7 +924,7 @@ grid-size-y
 grid-size-y
 1
 9
-6.0
+5.0
 1
 1
 NIL
@@ -829,7 +939,7 @@ grid-size-x
 grid-size-x
 1
 9
-6.0
+5.0
 1
 1
 NIL
@@ -855,7 +965,7 @@ num-cars
 num-cars
 1
 400
-52.0
+99.0
 1
 1
 NIL
@@ -922,17 +1032,17 @@ speed-limit
 speed-limit
 0.1
 1
-0.6
+0.5
 0.1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-960
-425
-1065
-470
+965
+465
+1070
+510
 Current Phase
 phase
 3
@@ -948,7 +1058,7 @@ ticks-per-cycle
 ticks-per-cycle
 1
 100
-20.0
+35.0
 1
 1
 NIL
@@ -1055,7 +1165,7 @@ SWITCH
 508
 show_messages
 show_messages
-0
+1
 1
 -1000
 
@@ -1094,7 +1204,7 @@ SLIDER
 %-carpoolers
 0
 100
-75.0
+50.0
 1
 1
 %
@@ -1109,7 +1219,7 @@ num-persons
 num-persons
 0
 200
-100.0
+102.0
 1
 1
 NIL
@@ -1139,7 +1249,7 @@ waiting-discrepancy
 waiting-discrepancy
 15
 80
-25.0
+15.0
 1
 1
 %
@@ -1199,9 +1309,107 @@ SWITCH
 583
 priority-areas
 priority-areas
-1
+0
 1
 -1000
+
+MONITOR
+965
+390
+1070
+435
+Persons Carpooling
+num-persons-carpooling
+17
+1
+11
+
+MONITOR
+1190
+390
+1287
+435
+Cars Carpooling
+num-cars-carpooling
+17
+1
+11
+
+MONITOR
+20
+595
+77
+640
+xop
+xop-priority
+17
+1
+11
+
+MONITOR
+90
+595
+147
+640
+yop
+yop-priority
+17
+1
+11
+
+MONITOR
+160
+595
+215
+640
+xdp
+xdp-priority
+17
+1
+11
+
+MONITOR
+230
+595
+287
+640
+ydp
+ydp-priority
+17
+1
+11
+
+SLIDER
+160
+550
+300
+583
+%-population
+%-population
+0
+100
+84.0
+1
+1
+%
+HORIZONTAL
+
+BUTTON
+85
+655
+222
+688
+Select Priority Area
+choose-priority-area
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT

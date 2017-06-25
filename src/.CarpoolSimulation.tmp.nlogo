@@ -868,19 +868,9 @@ to-report get-path-at-intersection [intersection-path current-patch goal-patch]
     ["down"]
     ["left"]
   ]
-  ask current-patch [
-    set pcolor blue
-  ]
-  ask goal-patch [
-    set pcolor yellow
-  ]
-  output-write word "Start: " current-patch
-  output-write word "Goal: " goal-patch
-  output-print ""
 
   let patch-to-analyze current-patch
   while [patch-to-analyze != goal-patch][
-    output-write patch-to-analyze
     ifelse member? patch-to-analyze candidates and patch-to-analyze != min-one-of candidates [ distance [ goal-patch ] of self ][
       ifelse (direction = "up" or direction = "right") [
         ifelse (direction = "up")
@@ -921,9 +911,9 @@ end
 ; See Info tab for full copyright and license.
 @#$#@#$#@
 GRAPHICS-WINDOW
-327
+590
 10
-945
+1208
 629
 -1
 -1
@@ -948,9 +938,9 @@ ticks
 30.0
 
 PLOT
-1410
+1665
 10
-1628
+1883
 185
 Average Wait Time of Cars
 Time
@@ -966,9 +956,9 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot mean [wait-time] of cars"
 
 PLOT
-1187
+1442
 8
-1403
+1658
 183
 Average Speed of Cars
 Time
@@ -1014,10 +1004,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-170
-170
-310
-203
+210
+10
+315
+43
 power?
 power?
 0
@@ -1033,16 +1023,16 @@ num-cars
 num-cars
 1
 400
-1.0
+101.0
 1
 1
 NIL
 HORIZONTAL
 
 PLOT
-964
+1219
 7
-1178
+1433
 182
 Stopped Cars
 Time
@@ -1058,9 +1048,9 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot num-cars-stopped"
 
 BUTTON
-220
+485
 45
-305
+570
 78
 Go
 go
@@ -1075,9 +1065,9 @@ NIL
 0
 
 BUTTON
-220
+485
 10
-304
+569
 43
 Setup
 setup
@@ -1092,10 +1082,10 @@ NIL
 1
 
 SLIDER
-10
-210
-155
-243
+330
+45
+475
+78
 speed-limit
 speed-limit
 0.1
@@ -1107,10 +1097,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-1685
-80
-1790
-125
+1505
+520
+1610
+565
 Current Phase
 phase
 3
@@ -1118,25 +1108,25 @@ phase
 11
 
 SLIDER
+330
 10
-170
-155
-203
+475
+43
 ticks-per-cycle
 ticks-per-cycle
 1
 100
-35.0
+33.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-160
-305
-305
-338
+460
+175
+575
+208
 current-phase
 current-phase
 0
@@ -1148,10 +1138,10 @@ current-phase
 HORIZONTAL
 
 BUTTON
-9
-345
-154
-378
+15
+220
+160
+253
 Change light
 change-light-at-current-intersection
 NIL
@@ -1165,10 +1155,10 @@ NIL
 0
 
 SWITCH
-9
-305
-154
-338
+330
+175
+445
+208
 current-auto?
 current-auto?
 0
@@ -1176,10 +1166,10 @@ current-auto?
 -1000
 
 BUTTON
-159
-345
-304
-378
+165
+220
+310
+253
 Select intersection
 choose-current
 T
@@ -1193,10 +1183,10 @@ NIL
 0
 
 BUTTON
-10
-410
-155
-443
+330
+220
+455
+253
 watch a car
 watch-a-car
 NIL
@@ -1210,10 +1200,10 @@ NIL
 0
 
 BUTTON
-160
-410
-305
-443
+460
+220
+575
+253
 stop watching
 stop-watching
 NIL
@@ -1227,10 +1217,10 @@ NIL
 0
 
 SWITCH
-10
-475
-152
-508
+290
+130
+432
+163
 show_messages
 show_messages
 1
@@ -1238,10 +1228,10 @@ show_messages
 -1000
 
 SWITCH
-160
-475
-302
-508
+435
+130
+577
+163
 show-intentions
 show-intentions
 1
@@ -1251,7 +1241,7 @@ show-intentions
 SLIDER
 10
 85
-135
+150
 118
 num-passengers
 num-passengers
@@ -1264,9 +1254,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-150
+155
 85
-310
+315
 118
 %-carpoolers
 %-carpoolers
@@ -1281,13 +1271,13 @@ HORIZONTAL
 SLIDER
 10
 130
-310
+280
 163
 num-persons
 num-persons
 0
 200
-3.0
+76.0
 1
 1
 NIL
@@ -1295,9 +1285,9 @@ HORIZONTAL
 
 SLIDER
 10
-255
-155
-288
+175
+165
+208
 ticks-of-waiting
 ticks-of-waiting
 100
@@ -1309,10 +1299,10 @@ ticks
 HORIZONTAL
 
 SLIDER
-165
-255
-305
-288
+170
+175
+315
+208
 waiting-discrepancy
 waiting-discrepancy
 15
@@ -1324,10 +1314,10 @@ waiting-discrepancy
 HORIZONTAL
 
 SWITCH
-170
 210
-310
-243
+45
+315
+78
 small-world
 small-world
 0
@@ -1335,9 +1325,9 @@ small-world
 -1000
 
 PLOT
-965
+1220
 210
-1180
+1435
 375
 Persons Carpooling
 time
@@ -1353,9 +1343,9 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot num-persons-carpooling"
 
 PLOT
-1190
+1445
 210
-1405
+1660
 375
 Cars Carpooling
 time
@@ -1371,20 +1361,20 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot num-cars-carpooling"
 
 SWITCH
-10
-550
-150
-583
+20
+275
+160
+308
 priority-areas
 priority-areas
-1
+0
 1
 -1000
 
 MONITOR
-1025
+1280
 390
-1130
+1385
 435
 Persons Carpooling
 num-persons-carpooling
@@ -1393,9 +1383,9 @@ num-persons-carpooling
 11
 
 MONITOR
-1250
+1505
 390
-1347
+1602
 435
 Cars Carpooling
 num-cars-carpooling
@@ -1404,10 +1394,10 @@ num-cars-carpooling
 11
 
 MONITOR
-20
-595
-77
-640
+30
+320
+87
+365
 xop
 xop-priority
 3
@@ -1415,10 +1405,10 @@ xop-priority
 11
 
 MONITOR
-90
-595
-147
-640
+100
+320
+157
+365
 yop
 yop-priority
 3
@@ -1426,10 +1416,10 @@ yop-priority
 11
 
 MONITOR
-160
-595
-215
-640
+170
+320
+225
+365
 xdp
 xdp-priority
 3
@@ -1437,10 +1427,10 @@ xdp-priority
 11
 
 MONITOR
-230
-595
-287
-640
+240
+320
+297
+365
 ydp
 ydp-priority
 3
@@ -1448,25 +1438,25 @@ ydp-priority
 11
 
 SLIDER
-160
-550
-300
-583
+170
+275
+310
+308
 %-population
 %-population
 0
 100
-70.0
+82.0
 1
 1
 %
 HORIZONTAL
 
 BUTTON
-85
-655
-222
-688
+95
+380
+232
+413
 Select Priority Area
 choose-priority-area
 T
@@ -1480,9 +1470,9 @@ NIL
 1
 
 PLOT
-1415
+1670
 210
-1630
+1885
 375
 % of Persons Carpooling
 time
@@ -1498,10 +1488,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot ( num-persons-carpooling / num-persons ) * 100"
 
 PLOT
-1640
-210
-1855
-375
+1225
+470
+1440
+635
 Persons Waiting for Car
 time
 persons
@@ -1514,6 +1504,47 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot num-waiting-persons"
+
+SWITCH
+330
+275
+425
+308
+accidents
+accidents
+1
+1
+-1000
+
+SLIDER
+420
+320
+570
+353
+accident-probability
+accident-probability
+1
+100
+1.0
+1
+1
+%
+HORIZONTAL
+
+SLIDER
+325
+370
+485
+403
+ticks-of-accident
+ticks-of-accident
+50
+1000
+50.0
+25
+1
+ticks
+HORIZONTAL
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT

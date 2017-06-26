@@ -33,6 +33,7 @@ globals
   num-waiting-persons
   num-persons-carpooling
   num-cars-carpooling
+  num-parked-cars
   accidents-list
 
   semaphores
@@ -42,7 +43,10 @@ globals
   xdp-priority
   yop-priority
   ydp-priority
+
   mouse-was-down?
+
+  log-file
 ]
 
 cars-own
@@ -56,6 +60,10 @@ cars-own
   house     ;; the patch where they live
   current-path ;;the path to take
   goal      ;; where am I currently headed
+  parked
+
+  parking-elapsed-time
+  parking-limit-time
 
   passengers ;; passengers
 
@@ -125,6 +133,7 @@ to setup
   ]
   setup-globals
   setup-patches  ;; ask the patches to draw themselves and set up a few variables
+  setup-log
 
   ;; Make an agentset of all patches where there can be a house or road
   ;; those patches with the background color shade of brown and next to a road
@@ -172,7 +181,7 @@ to setup
     stop
   ]
 
-  if (num-persons * 2 + num-cars * 2 > count goal-candidates) [
+  if (count turtles * 2 > count goal-candidates) [
     user-message (word
       "There are too many persons and cars for the amount of "
       "work and house candidates.  Either increase the amount of roads "
@@ -241,6 +250,33 @@ to setup-goal
     set goal work
   ]
 end
+to setup-log
+  if log-write [
+    set log-file (word "../logs/" log-file-name ".log")
+    ifelse not file-exists? log-file [
+      file-open log-file
+      file-print "The simulation started under these conditions:"
+      file-print ""
+      file-print ""
+      file-print (word "Number of x-grids:" grid-size-x ", number of x-grids:" grid-size-y
+        ", semaphores:" power? ", small world:" small-world ", number of cars:" num-cars ", % of carpoolers:" %-carpoolers
+        ", number of passengers:" num-passengers ", person ticks of waiting:" ticks-of-waiting ", person waiting discrepancy:" waiting-discrepancy "%"
+        ", priority area:" priority-areas " with a population % of " %-population ", priority area:" priority-areas
+        ", possibility of accidents:" accidents " with a accident % of " accident-probability ", an average accident time of " ticks-of-accident " ticks "
+        "and a discrepancy of " accident-time-discrepancy "%.")
+      file-print ""
+      file-print ""
+      file-print "Agents LOG:"
+      file-print ""
+    ][
+      user-message (word
+      "Log file already exists"
+      ".  Either change the log-file name "
+      "or delete the existing one. \n"
+      "The setup has stopped.")
+    ]
+  ]
+end
 ;; Initialize the global variables to appropriate values
 to setup-globals
   set current-intersection nobody ;; just for now, since there are no intersections yet
@@ -251,6 +287,7 @@ to setup-globals
   set num-cars-carpooling 0
   set num-persons-carpooling 0
   set num-waiting-persons 0
+  set num-parked-cars 0
   set mouse-was-down? false
 
   set accidents-list []
@@ -358,6 +395,9 @@ to setup-cars  ;; turtle procedure
   set passengers 0
   set intentions []
   set incoming-queue []
+  set parked false
+  set parking-elapsed-time 1
+  set parking-limit-time 0
   put-on-empty-road
   ifelse intersection? [
     ifelse random 2 = 0
@@ -417,25 +457,22 @@ to go
   ask patches with [ accident-current-time < accident-limit-time] [
     set accident-current-time accident-current-time + 1
   ]
-  if accidents [
-    if show-accident-roads [
-      ask patches with [ accident-current-time >= accident-limit-time and not member? self semaphores] [
-        set pcolor actual-color
-      ]
+  if show-accident-roads [
+    ask patches with [ accident-current-time >= accident-limit-time and not member? self semaphores] [
+      set pcolor actual-color
     ]
-    let index 0
-    while [index < length accidents-list ] [
-      let accident item index accidents-list
-      ifelse accident - 1 <= 0 [
-        set accidents-list remove-item index accidents-list
-      ][
-        set accidents-list replace-item index accidents-list (accident - 1)
-        set index index + 1
-      ]
+  ]
+  let index 0
+  while [index < length accidents-list ] [
+    let accident item index accidents-list
+    ifelse accident - 1 <= 0 [
+      set accidents-list remove-item index accidents-list
+    ][
+      set accidents-list replace-item index accidents-list (accident - 1)
+      set index index + 1
     ]
   ]
   tick
-
 end
 
 to choose-current
@@ -568,12 +605,12 @@ to set-speed [ delta-x delta-y ]  ;; turtle procedure
 
   ;; if there are turtles in front of the turtle, slow down
   ;; otherwise, speed up
-  ifelse any? cars-ahead [
-    ifelse any? (cars-ahead with [ up-car? != [ up-car? ] of myself ]) [
+  ifelse any? cars-ahead with [parked = false] [
+    ifelse any? (cars-ahead with [ up-car? != [ up-car? ] of myself and parked = false]) [
       set speed 0
     ]
     [
-      set speed [speed] of one-of cars-ahead
+      set speed [speed] of one-of cars-ahead with [parked = false]
       slow-down
     ]
   ]
@@ -608,16 +645,24 @@ to wait-for-messages
   let sender get-sender msg
   if get-performative msg = "query-if" and get-content msg = "able-to-carpool?" [
     ifelse (passengers < num-passengers - 1) [
+      let text (word "responded with yes, he still has " (passengers + 1) "/" num-passengers " passengers")
+      write-in-log text
       send add-content "yes" create-reply "inform" msg
       if passengers = 0 [ set num-cars-carpooling num-cars-carpooling + 1 ]
       set passengers passengers + 1
       set num-persons-carpooling num-persons-carpooling + 1
     ][
+      let text (word "responded with no, he already has " (passengers + 1) "/" num-passengers " passengers")
+      write-in-log text
       send add-content "no" create-reply "inform" msg
     ]
   ]
   if get-performative msg = "inform" [
     if (get-content msg = "was-left") [
+
+      let text (word "received an inform message from " sender ", he was left.")
+      write-in-log text
+
       if passengers = 1 [ set num-cars-carpooling num-cars-carpooling - 1 ]
       set passengers passengers - 1
       set num-persons-carpooling num-persons-carpooling - 1
@@ -703,6 +748,8 @@ to find-a-carpooler
 
   let suitable-carpooler one-of carpoolers with [ am-i-a-suitable-carpooler self start finish ]
   if suitable-carpooler != nobody [
+    let text word "sent a query-if to " suitable-carpooler
+    write-in-log text
     set response-received false
     add-intention "wait-for-responses" "response-was-received"
     send add-receiver ([who] of suitable-carpooler) add-content "able-to-carpool?" create-message "query-if"
@@ -714,11 +761,15 @@ to find-a-carpooler
   ]
   if wait-time > limit-wait-time [
     set wait-time 0
-    setup-limit-wait-time
     setup-goal
     move-to house
     set shape "person"
     set color black
+
+    let text (word "changed his home to " house ", and work to " work ". He waited for " limit-wait-time " ticks before taking this action.")
+    write-in-log text
+
+    setup-limit-wait-time
   ]
 end
 to-report am-i-a-suitable-carpooler [candidate start finish]
@@ -748,12 +799,38 @@ to next-patch-to-goal
       cut-the-road patch-here
     ]
   ]
+  if parking and speed > 0 and not member? patch-here intersection-patches and not member? patch-here semaphores [
+    let random-value random-float 100
+    set parked random-value < parking-probability
+    if parked [
+      let discrepancy (random accident-time-discrepancy) / 100
+      set parking-elapsed-time 0
+      set parking-limit-time ifelse-value (random 2 = 0)
+      [ ticks-of-parking + ticks-of-parking * discrepancy ]
+      [ ticks-of-parking - ticks-of-parking * discrepancy ]
+      hide-turtle
+      write-in-log (word "parked at " patch-here " for " parking-limit-time " ticks.")
+      add-intention "park" "parking-time-elapsed"
+      set num-parked-cars num-parked-cars + 1
+    ]
+  ]
+end
+to park
+  if show-parking-patches [
+    ask patch-here [
+      set pcolor gray
+    ]
+  ]
+  set parking-elapsed-time parking-elapsed-time + 1
 end
 to cut-the-road [ accident-patch ]
   let discrepancy (random accident-time-discrepancy) / 100
   let accident-time ifelse-value (random 2 = 0)
   [ ticks-of-accident + ticks-of-accident * discrepancy ]
   [ ticks-of-accident - ticks-of-accident * discrepancy ]
+
+  let text (word "had an accident at patch " accident-patch ", he has to wait for " accident-time " ticks before he can drive again. The whole road was cut.")
+  write-in-log text
 
   set accidents-list lput accident-time accidents-list
 
@@ -842,7 +919,14 @@ to stop-watching
   ]
   reset-perspective
 end
-
+to close-file
+  if file-exists? log-file [
+    file-print ""
+    file-print ""
+    file-print (word "The simulation runned for " ticks " ticks and has ended.")
+  ]
+  file-close
+end
 to label-subject
   if subject != nobody [
     ask subject [
@@ -888,15 +972,26 @@ to-report get-path
   report path
 end
 
+to write-in-log [ text ]
+  if log-write [
+     file-show text
+  ]
+end
+
 ;; intentions reporters
 to-report at-goal
+  if parked [
+    report true
+  ]
   if patch-here = (item 0 current-path) [
     if goal = house and (member? patch-here [ neighbors4 ] of house) [
+      write-in-log "arrived to work and a new path was recalculated."
       set goal work
       set-path
       report true
     ]
     if goal = work and (member? patch-here [ neighbors4 ] of work) [
+      write-in-log "arrived to his house and a new path was recalculated."
       set goal house
       set-path
       report true
@@ -970,14 +1065,27 @@ to-report get-path-at-intersection [intersection-path current-patch goal-patch]
     ][
       let next ifelse-value (member? patch-to-analyze ([neighbors4] of goal-patch))
       [ goal-patch ]
-      [min-one-of ([neighbors4] of patch-to-analyze) [ distance [ goal-patch ] of self ]]
+      [ min-one-of ([neighbors4] of patch-to-analyze) [ distance [ goal-patch ] of self ] ]
       set intersection-path lput next intersection-path
     ]
     set patch-to-analyze last intersection-path
   ]
   report intersection-path
 end
-
+to-report parking-time-elapsed
+  if parking-elapsed-time >= parking-limit-time [
+    show-turtle
+    set parked false
+    go-to-goal
+    ask patch-here [
+      set pcolor white
+    ]
+    set num-parked-cars num-parked-cars - 1
+    write-in-log "is driving again."
+    report true
+  ]
+  report false
+end
 to-report get-high-populated-area [x1 y1 x2 y2]
   report ifelse-value (x1 >= x2) [
       ifelse-value (y1 >= y2) [
@@ -993,8 +1101,7 @@ to-report get-high-populated-area [x1 y1 x2 y2]
       ]
   ]
 end
-; Copyright 2008 Uri Wilensky.
-; See Info tab for full copyright and license.
+; António Pedro Fraga, Pedro Martins and Luís Oliveira developed this project in 2017 based on the Traffic Simulation Model developed by Uri Wilensky in 2008.
 @#$#@#$#@
 GRAPHICS-WINDOW
 590
@@ -1068,7 +1175,7 @@ grid-size-y
 grid-size-y
 1
 9
-5.0
+3.0
 1
 1
 NIL
@@ -1083,7 +1190,7 @@ grid-size-x
 grid-size-x
 1
 9
-5.0
+3.0
 1
 1
 NIL
@@ -1109,7 +1216,7 @@ num-cars
 num-cars
 1
 400
-101.0
+48.0
 1
 1
 NIL
@@ -1363,7 +1470,7 @@ num-persons
 num-persons
 0
 200
-115.0
+45.0
 1
 1
 NIL
@@ -1447,10 +1554,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot num-cars-carpooling"
 
 SWITCH
-20
-275
-160
-308
+15
+465
+155
+498
 priority-areas
 priority-areas
 0
@@ -1480,10 +1587,10 @@ num-cars-carpooling
 11
 
 MONITOR
-30
-320
-87
-365
+25
+510
+82
+555
 xop
 xop-priority
 3
@@ -1491,10 +1598,10 @@ xop-priority
 11
 
 MONITOR
-100
-320
-157
-365
+95
+510
+152
+555
 yop
 yop-priority
 3
@@ -1502,10 +1609,10 @@ yop-priority
 11
 
 MONITOR
-170
-320
-225
-365
+165
+510
+220
+555
 xdp
 xdp-priority
 3
@@ -1513,10 +1620,10 @@ xdp-priority
 11
 
 MONITOR
-240
-320
-297
-365
+235
+510
+292
+555
 ydp
 ydp-priority
 3
@@ -1524,10 +1631,10 @@ ydp-priority
 11
 
 SLIDER
-170
-275
-310
-308
+165
+465
+305
+498
 %-population
 %-population
 0
@@ -1539,10 +1646,10 @@ SLIDER
 HORIZONTAL
 
 BUTTON
-95
-380
-232
-413
+90
+570
+227
+603
 Select Priority Area
 choose-priority-area
 T
@@ -1611,7 +1718,7 @@ accident-probability
 accident-probability
 0.001
 0.1
-0.02
+0.013
 0.001
 1
 %
@@ -1654,7 +1761,7 @@ SWITCH
 308
 show-accident-roads
 show-accident-roads
-0
+1
 1
 -1000
 
@@ -1688,23 +1795,136 @@ length accidents-list
 11
 
 INPUTBOX
-90
-525
-307
-585
-log-file
-simulation.log
+340
+460
+557
+520
+log-file-name
+simulation
 1
 0
 String
 
 SWITCH
+355
+540
+457
+573
+log-write
+log-write
+1
+1
+-1000
+
+BUTTON
+470
+540
+547
+573
+Close log
+close-file
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+PLOT
+1675
+455
+1885
+620
+% of Parked Cars
+Time
+% of Cars
+0.0
+10.0
+0.0
+100.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot (num-parked-cars / num-cars) * 100"
+
+MONITOR
+1750
+640
+1832
+685
+ Parked Cars
+num-parked-cars
+0
+1
+11
+
+SWITCH
+15
+275
+118
+308
+parking
+parking
+0
+1
+-1000
+
+SLIDER
+15
 320
-535
-422
-568
-log-write
-log-write
+275
+353
+parking-probability
+parking-probability
+0.01
+1
+0.86
+0.01
+1
+%
+HORIZONTAL
+
+SLIDER
+15
+360
+275
+393
+ticks-of-parking
+ticks-of-parking
+50
+1000
+50.0
+25
+1
+ticks
+HORIZONTAL
+
+SLIDER
+15
+405
+275
+438
+parking-time-discrepancy
+parking-time-discrepancy
+15
+80
+15.0
+1
+1
+%
+HORIZONTAL
+
+SWITCH
+125
+275
+280
+308
+show-parking-patches
+show-parking-patches
 1
 1
 -1000

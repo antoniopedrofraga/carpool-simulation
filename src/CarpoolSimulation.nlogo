@@ -33,6 +33,7 @@ globals
   num-waiting-persons
   num-persons-carpooling
   num-cars-carpooling
+  accidents-list
 
   semaphores
   semaphore-goals
@@ -93,6 +94,9 @@ patches-own
   auto?           ;; whether or not this intersection will switch automatically.
                   ;; false for non-intersection patches.
   actual-color
+
+  accident-current-time
+  accident-limit-time
 ]
 
 
@@ -132,7 +136,7 @@ to setup
     or
     member? patch-at -1 0 intersections
     or
-    member? patch-at -1 -1 intersections
+    member? patch-at -1 1 intersections
     or
     member? patch-at 0 0 intersections
   ]
@@ -209,20 +213,20 @@ to setup-limit-wait-time
   set limit-wait-time 0
     ifelse random 2 = 0
       [ set limit-wait-time ticks-of-waiting + (ticks-of-waiting * discrepancy) ]
-      [ set limit-wait-time ticks-of-waiting - (ticks-of-waiting * discrepancy)  ]
+      [ set limit-wait-time ticks-of-waiting - (ticks-of-waiting * discrepancy) ]
 end
 ;; Setup goal fro cars and persons
 to setup-goal
   ifelse priority-areas  [
     let area high-populated-area
 
-    let probability-house random 100 + 1 < %-population
+    let probability-house random 100 < %-population
     ifelse probability-house [
       set house one-of goal-candidates with [member? self area]
     ][
       set house one-of goal-candidates with [not member? self area]
     ]
-    let probability-work random 100 + 1 < %-population
+    let probability-work random 100 < %-population
     ifelse probability-work [
       set work one-of goal-candidates with [ self != [ house ] of myself and member? self area ]
     ][
@@ -249,6 +253,8 @@ to setup-globals
   set num-waiting-persons 0
   set mouse-was-down? false
 
+  set accidents-list []
+
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
   set acceleration 0.099
 end
@@ -265,6 +271,9 @@ to setup-patches
     set my-column -1
     set my-phase -1
     set pcolor brown + 3
+
+    set accident-current-time 1
+    set accident-limit-time 0
   ]
 
   ;; initialize the global variables that hold patch agentsets
@@ -404,6 +413,27 @@ to go
   ]
   label-subject ;; if we're watching a car, have it display its goal
   next-phase ;; update the phase and the global clock
+
+  ask patches with [ accident-current-time < accident-limit-time] [
+    set accident-current-time accident-current-time + 1
+  ]
+  if accidents [
+    if show-accident-roads [
+      ask patches with [ accident-current-time >= accident-limit-time and not member? self semaphores] [
+        set pcolor actual-color
+      ]
+    ]
+    let index 0
+    while [index < length accidents-list ] [
+      let accident item index accidents-list
+      ifelse accident - 1 <= 0 [
+        set accidents-list remove-item index accidents-list
+      ][
+        set accidents-list replace-item index accidents-list (accident - 1)
+        set index index + 1
+      ]
+    ]
+  ]
   tick
 
 end
@@ -513,7 +543,8 @@ end
 ;; set the turtles' speed based on whether they are at a red traffic light or the speed of the
 ;; turtle (if any) on the patch in front of them
 to set-car-speed  ;; turtle procedure
-  ifelse pcolor = red [
+  let at-accident-patch [accident-current-time] of patch-here < [accident-limit-time] of patch-here
+  ifelse pcolor = red or at-accident-patch [
     set speed 0
   ]
   [
@@ -710,6 +741,61 @@ to next-patch-to-goal
   face next-patch ;; car heads towards its goal
   set-car-speed
   fd speed
+  if accidents and speed > 0 [
+    let random-value random-float 100
+    let is-an-accident random-value < accident-probability
+    if is-an-accident [
+      cut-the-road patch-here
+    ]
+  ]
+end
+to cut-the-road [ accident-patch ]
+  let discrepancy (random accident-time-discrepancy) / 100
+  let accident-time ifelse-value (random 2 = 0)
+  [ ticks-of-accident + ticks-of-accident * discrepancy ]
+  [ ticks-of-accident - ticks-of-accident * discrepancy ]
+
+  set accidents-list lput accident-time accidents-list
+
+  ifelse member? accident-patch intersection-patches [
+    let intersection-neighbors ([neighbors] of accident-patch) with [member? self intersection-patches]
+    ask (patch-set accident-patch intersection-neighbors) [
+        set accident-current-time 0
+        set accident-limit-time accident-time
+      ]
+    if show-accident-roads [
+      ask (patch-set accident-patch intersection-neighbors) [
+        set pcolor yellow
+      ]
+    ]
+  ][
+    let old-patch accident-patch
+    while [not member? accident-patch intersection-patches] [
+      ask accident-patch [
+        set accident-current-time 0
+        set accident-limit-time accident-time
+      ]
+      if show-accident-roads [
+        ask accident-patch [
+          set pcolor yellow
+        ]
+      ]
+      set accident-patch ifelse-value (member? accident-patch upRoad or member? accident-patch downRoad) [([patch-at 0 1] of accident-patch)][([patch-at 1 0] of accident-patch)]
+    ]
+    while [not member? old-patch intersection-patches] [
+      ask old-patch [
+        set accident-current-time 0
+        set accident-limit-time accident-time
+      ]
+      if show-accident-roads [
+        ask old-patch [
+          set pcolor yellow
+        ]
+      ]
+      set old-patch ifelse-value (member? old-patch upRoad or member? old-patch downRoad) [([patch-at 0 -1] of old-patch)][([patch-at -1 0] of old-patch)]
+    ]
+  ]
+
 end
 ;; establish goal of driver (house or work) and move to next patch along the way
 to-report next-patch
@@ -982,7 +1068,7 @@ grid-size-y
 grid-size-y
 1
 9
-6.0
+5.0
 1
 1
 NIL
@@ -997,7 +1083,7 @@ grid-size-x
 grid-size-x
 1
 9
-6.0
+5.0
 1
 1
 NIL
@@ -1023,7 +1109,7 @@ num-cars
 num-cars
 1
 400
-52.0
+101.0
 1
 1
 NIL
@@ -1090,17 +1176,17 @@ speed-limit
 speed-limit
 0.1
 1
-0.4
+0.5
 0.1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-1505
-520
-1610
-565
+1280
+640
+1385
+685
 Current Phase
 phase
 3
@@ -1116,7 +1202,7 @@ ticks-per-cycle
 ticks-per-cycle
 1
 100
-35.0
+25.0
 1
 1
 NIL
@@ -1262,7 +1348,7 @@ SLIDER
 %-carpoolers
 0
 100
-80.0
+50.0
 1
 1
 %
@@ -1277,7 +1363,7 @@ num-persons
 num-persons
 0
 200
-76.0
+115.0
 1
 1
 NIL
@@ -1290,10 +1376,10 @@ SLIDER
 208
 ticks-of-waiting
 ticks-of-waiting
-100
+50
 1000
 100.0
-50
+25
 1
 ticks
 HORIZONTAL
@@ -1446,7 +1532,7 @@ SLIDER
 %-population
 0
 100
-82.0
+80.0
 1
 1
 %
@@ -1489,9 +1575,9 @@ PENS
 
 PLOT
 1225
-470
+455
 1440
-635
+620
 Persons Waiting for Car
 time
 persons
@@ -1506,30 +1592,122 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot num-waiting-persons"
 
 SWITCH
-330
+325
 275
-437
+420
 308
 accidents
 accidents
-1
+0
 1
 -1000
 
 SLIDER
-330
 320
-502
+320
+575
 353
 accident-probability
 accident-probability
+0.001
+0.1
+0.02
+0.001
 1
-100
-1.0
+%
+HORIZONTAL
+
+SLIDER
+320
+360
+575
+393
+ticks-of-accident
+ticks-of-accident
+50
+1000
+50.0
+25
+1
+ticks
+HORIZONTAL
+
+SLIDER
+320
+405
+575
+438
+accident-time-discrepancy
+accident-time-discrepancy
+15
+80
+15.0
 1
 1
 %
 HORIZONTAL
+
+SWITCH
+425
+275
+575
+308
+show-accident-roads
+show-accident-roads
+0
+1
+-1000
+
+PLOT
+1450
+455
+1665
+620
+Number of Accidents
+Time
+Number of Accidents
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot length accidents-list"
+
+MONITOR
+1505
+640
+1620
+685
+Numbers of Accidents
+length accidents-list
+0
+1
+11
+
+INPUTBOX
+90
+525
+307
+585
+log-file
+simulation.log
+1
+0
+String
+
+SWITCH
+320
+535
+422
+568
+log-write
+log-write
+1
+1
+-1000
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT

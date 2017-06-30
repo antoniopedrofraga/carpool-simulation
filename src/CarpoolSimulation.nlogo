@@ -258,7 +258,7 @@ to setup-log
       file-print "The simulation started under these conditions:"
       file-print ""
       file-print ""
-      file-print (word "Number of x-grids:" grid-size-x ", number of x-grids:" grid-size-y
+      file-print (word "Number of x-grids:" grid-size-x ", number of y-grids:" grid-size-y
         ", semaphores:" power? ", small world:" small-world ", number of cars:" num-cars ", % of carpoolers:" %-carpoolers
         ", number of passengers:" num-passengers ", person ticks of waiting:" ticks-of-waiting ", person waiting discrepancy:" waiting-discrepancy "%"
         ", priority area:" priority-areas " with a population % of " %-population ", priority area:" priority-areas
@@ -1175,7 +1175,7 @@ grid-size-y
 grid-size-y
 1
 9
-3.0
+7.0
 1
 1
 NIL
@@ -1190,7 +1190,7 @@ grid-size-x
 grid-size-x
 1
 9
-3.0
+7.0
 1
 1
 NIL
@@ -1216,7 +1216,7 @@ num-cars
 num-cars
 1
 400
-48.0
+100.0
 1
 1
 NIL
@@ -1455,7 +1455,7 @@ SLIDER
 %-carpoolers
 0
 100
-50.0
+60.0
 1
 1
 %
@@ -1470,7 +1470,7 @@ num-persons
 num-persons
 0
 200
-45.0
+100.0
 1
 1
 NIL
@@ -1526,9 +1526,9 @@ Persons Carpooling
 time
 persons
 0.0
-10.0
+1.0
 0.0
-10.0
+1.0
 true
 false
 "" ""
@@ -1544,9 +1544,9 @@ Cars Carpooling
 time
 cars
 0.0
-10.0
+1.0
 0.0
-10.0
+1.0
 true
 false
 "" ""
@@ -1689,9 +1689,9 @@ Persons Waiting for Car
 time
 persons
 0.0
-10.0
+1.0
 0.0
-10.0
+1.0
 true
 false
 "" ""
@@ -1705,7 +1705,7 @@ SWITCH
 308
 accidents
 accidents
-0
+1
 1
 -1000
 
@@ -1718,7 +1718,7 @@ accident-probability
 accident-probability
 0.001
 0.1
-0.013
+0.005
 0.001
 1
 %
@@ -1774,9 +1774,9 @@ Number of Accidents
 Time
 Number of Accidents
 0.0
-10.0
+1.0
 0.0
-10.0
+1.0
 true
 false
 "" ""
@@ -1812,7 +1812,7 @@ SWITCH
 573
 log-write
 log-write
-1
+0
 1
 -1000
 
@@ -1842,9 +1842,9 @@ PLOT
 Time
 % of Cars
 0.0
-10.0
+1.0
 0.0
-100.0
+1.0
 true
 false
 "" ""
@@ -1925,7 +1925,7 @@ SWITCH
 308
 show-parking-patches
 show-parking-patches
-1
+0
 1
 -1000
 

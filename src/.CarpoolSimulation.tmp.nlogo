@@ -265,7 +265,7 @@ to setup-log
         ", possibility of accidents:" accidents " with a accident % of " accident-probability ", an average accident time of " ticks-of-accident " ticks "
         "and a discrepancy of " accident-time-discrepancy "%"
         ", possibility of parking:" parking " with a parking % of " parking-probability ", an average parking time of " ticks-of-parking " ticks "
-        "and a discrepancy of " parking-time-discrepancy "%")
+        "and a discrepancy of " -time-discrepancy "%")
       file-print ""
       file-print ""
       file-print "Agents LOG:"

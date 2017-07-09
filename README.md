@@ -57,7 +57,7 @@ By considering the analyzed data through the six tests we conducted (described i
 
 ## Developers
 
-| [António Pedro Fraga](https://github.com/pedrofraga) | [Luís Oliveira](https://github.com/luisoliveira8) | [Pedro Martins](https://github.com/esquilofeup) |
+| [António Pedro Fraga](https://github.com/pedrofraga) | [Luís Oliveira](https://github.com/luisoliveira8) | [Pedro Martins](https://github.com/pedrovlmartins) |
 | ------------- | ------------- | ------------- |
 | ![](./README/apf.jpg)  | ![](./README/lo.png) | ![](./README/pvlm.png)  |
 | antoniopedrofraga@gmail.com | luisoliveira8c@gmail.com | pedrovlmartins@gmail.com  |

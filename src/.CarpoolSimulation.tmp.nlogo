@@ -164,7 +164,6 @@ to setup
     stop
     ]
   ]
-
   ask patches [
     set actual-color pcolor
   ]
@@ -265,7 +264,7 @@ to setup-log
         ", possibility of accidents:" accidents " with a accident % of " accident-probability ", an average accident time of " ticks-of-accident " ticks "
         "and a discrepancy of " accident-time-discrepancy "%"
         ", possibility of parking:" parking " with a parking % of " parking-probability ", an average parking time of " ticks-of-parking " ticks "
-        "and a discrepancy of " -time-discrepancy "%")
+        "and a discrepancy of " parking-time-discrepancy "%")
       file-print ""
       file-print ""
       file-print "Agents LOG:"
@@ -455,14 +454,13 @@ to go
   ]
   label-subject ;; if we're watching a car, have it display its goal
   next-phase ;; update the phase and the global clock
-
-  ask patches with [ accident-current-time < accident-limit-time] [
-    set accident-current-time accident-current-time + 1
-  ]
   if show-accident-roads [
-    ask patches with [ accident-current-time >= accident-limit-time and not member? self semaphores] [
+    ask patches with [ accident-current-time + 1 >= accident-limit-time  and accident-current-time < accident-limit-time and not member? self semaphores] [
       set pcolor actual-color
     ]
+  ]
+  ask patches with [ accident-current-time < accident-limit-time] [
+    set accident-current-time accident-current-time + 1
   ]
   let index 0
   while [index < length accidents-list ] [
@@ -1707,7 +1705,7 @@ SWITCH
 308
 accidents
 accidents
-1
+0
 1
 -1000
 
@@ -1720,7 +1718,7 @@ accident-probability
 accident-probability
 0.001
 0.1
-0.005
+0.031
 0.001
 1
 %

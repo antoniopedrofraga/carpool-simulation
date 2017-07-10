@@ -15,7 +15,7 @@
 
 ## Description 
 
-This project was developed under the **Systems Modelling and Simulation** course @ FEUP. For a more concrete information you can read the project [scientific paper](./report/simulation-carpool-system.pdf). We used a **BDI like** and a **FIPA like** frameworks in order to control and exchange messages bettween the several simulation agents.
+This project was developed under the **Systems Modelling and Simulation** course @ FEUP. For a more concrete information you can read the project [scientific paper](./report/simulation-carpool-system.pdf). We used a **BDI like** and a **FIPA like** frameworks in order to control and exchange messages between the several simulation agents.
 
 [![Simulation Video](./README/video.png)](https://www.youtube.com/watch?v=z3BzHFrmHy8)
 
